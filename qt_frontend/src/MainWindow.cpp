@@ -1100,7 +1100,10 @@ void MainWindow::carregarConfiguracoes()
 
     m_iaProvedor = settings.value("iaProvedor", "gemini").toString();
     m_iaApiKey   = settings.value("iaApiKey", "").toString();
-    m_iaModelo   = settings.value("iaModelo", "gemini-2.5-flash").toString();
+    m_iaModelo   = settings.value("iaModelo", "gemini-1.5-flash").toString();
+    if (m_iaModelo == "gemini-2.5-flash" || m_iaModelo.isEmpty()) {
+        m_iaModelo = "gemini-1.5-flash";
+    }
     if (m_lblModeloAtivoChat) {
         m_lblModeloAtivoChat->setText(QString("IA: %1 (%2)").arg(m_iaProvedor.toUpper(), m_iaModelo));
     }
@@ -1691,6 +1694,9 @@ void MainWindow::onRequisicaoIniciada(const QString &endpoint)
         m_lblStatus->setText("Transcrevendo com Whisper...");
     } else if (endpoint == "/avaliar_pronuncia") {
         m_lblStatus->setText("Analisando pronúncia...");
+    } else if (endpoint == "/chat_ia") {
+        setButtonBusy(m_btnChatEnviar, true);
+        m_lblStatus->setText("Consultando Assistente IA...");
     }
 }
 
@@ -1699,11 +1705,30 @@ void MainWindow::onRequisicaoConcluida(const QString &endpoint)
     if (endpoint == "/traduzir") setButtonBusy(m_btnTraduzir, false);
     if (endpoint == "/falar")    setButtonBusy(m_btnOuvir, false);
     if (endpoint.startsWith("/parar_gravacao")) setButtonBusy(m_btnGravar, false);
+    if (endpoint == "/chat_ia")  setButtonBusy(m_btnChatEnviar, false);
     m_lblStatus->setText("Pronto");
 }
 
 void MainWindow::onErroRequisicao(const QString &endpoint, const QString &mensagem)
 {
+    if (endpoint == "/traduzir") setButtonBusy(m_btnTraduzir, false);
+    if (endpoint == "/falar")    setButtonBusy(m_btnOuvir, false);
+    if (endpoint.startsWith("/parar_gravacao")) setButtonBusy(m_btnGravar, false);
+    if (endpoint == "/chat_ia") {
+        setButtonBusy(m_btnChatEnviar, false);
+        if (m_chatHistorico) {
+            m_chatHistorico->append(
+                QString("<div style='margin-bottom: 12px; margin-top: 6px; background-color: rgba(239, 68, 68, 0.12); "
+                        "border: 1px solid rgba(239, 68, 68, 0.35); border-left: 3px solid #ef4444; border-radius: 8px; padding: 10px 12px;'>"
+                        "<div style='font-size: 11px; font-weight: 700; color: #f87171; margin-bottom: 4px;'>⚠️ Falha no Assistente IA</div>"
+                        "<div style='color: #fca5a5; font-size: 13px; line-height: 1.4;'>%1</div>"
+                        "<div style='margin-top: 6px; font-size: 11px; color: #94a3b8;'>"
+                        "Dica: Vá no menu superior ou clique em <b>⚙️ Chaves/API</b> para validar sua chave Gemini ou escolher o modelo.</div>"
+                        "</div>").arg(mensagem.toHtmlEscaped())
+            );
+            m_chatHistorico->verticalScrollBar()->setValue(m_chatHistorico->verticalScrollBar()->maximum());
+        }
+    }
     m_lblStatus->setText("Falha na operação");
     appendLog("Erro em " + endpoint + ": " + mensagem, "error");
 }
@@ -1872,8 +1897,14 @@ void MainWindow::onChatRespostaResultado(const QString &resposta, const QString 
     botMsg["content"] = resposta;
     m_chatHistoricoJson.append(botMsg);
 
-    // Formata resposta em HTML
+    // Formata resposta em HTML com suporte a Markdown básico (código, negrito, itálico)
     QString formatted = resposta.toHtmlEscaped();
+    static const QRegularExpression reCode("`([^`]+)`");
+    formatted.replace(reCode, "<code style='background-color: #272a33; color: #38bdf8; padding: 2px 5px; border-radius: 4px; font-family: monospace;'>\\1</code>");
+    static const QRegularExpression reBold("\\*\\*([^*]+)\\*\\*");
+    formatted.replace(reBold, "<strong style='color: #f8fafc;'>\\1</strong>");
+    static const QRegularExpression reItalic("(?<!\\*)\\*([^*\\n]+)\\*(?!\\*)");
+    formatted.replace(reItalic, "<em>\\1</em>");
     formatted.replace("\n\n", "<br><br>");
     formatted.replace("\n", "<br>");
 
@@ -1938,12 +1969,12 @@ void MainWindow::onConfigurarIA()
     form->addRow("Chave Gemini:", layoutKey);
 
     auto *comboModelo = new QComboBox(&dlg);
-    comboModelo->addItem("gemini-2.5-flash (Mais Recente & Inteligente)", "gemini-2.5-flash");
-    comboModelo->addItem("gemini-1.5-flash (Ultrarrápido)", "gemini-1.5-flash");
-    comboModelo->addItem("gemini-2.0-flash", "gemini-2.0-flash");
+    comboModelo->addItem("gemini-1.5-flash (Recomendado: Rápido & Gratuito)", "gemini-1.5-flash");
+    comboModelo->addItem("gemini-2.0-flash (Nova Geração Google)", "gemini-2.0-flash");
+    comboModelo->addItem("gemini-1.5-pro (Raciocínio Avançado)", "gemini-1.5-pro");
     const int idxMod = comboModelo->findData(m_iaModelo);
     if (idxMod >= 0) comboModelo->setCurrentIndex(idxMod);
-    form->addRow("Modelo:", comboModelo);
+    form->addRow("Modelo Gemini:", comboModelo);
 
     auto *txtOllamaModelo = new QLineEdit(&dlg);
     txtOllamaModelo->setText(m_iaProvedor == "ollama" ? m_iaModelo : "llama3");

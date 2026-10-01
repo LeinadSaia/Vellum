@@ -563,7 +563,17 @@ async def avaliar_pronuncia(body: AvaliarPronunciaRequest):
 # Assistente Técnico / Chat IA Multimodal (Gemini & Ollama)
 # ---------------------------------------------------------------------------
 async def _chamar_gemini_chat_async(mensagem: str, imagem_base64: Optional[str], historico: List[ChatMensagem], api_key: str, modelo: Optional[str]) -> str:
-    modelo_escolhido = modelo or "gemini-2.5-flash"
+    # Mapeamento e fallback para modelos válidos no Google AI Studio
+    mod = (modelo or "").lower().strip()
+    if not mod or "2.5" in mod or mod == "gemini-flash":
+        modelo_escolhido = "gemini-1.5-flash"
+    elif "2.0" in mod:
+        modelo_escolhido = "gemini-2.0-flash"
+    elif "pro" in mod:
+        modelo_escolhido = "gemini-1.5-pro"
+    else:
+        modelo_escolhido = "gemini-1.5-flash"
+
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo_escolhido}:generateContent?key={api_key}"
     
     system_instruction = (
@@ -599,7 +609,7 @@ async def _chamar_gemini_chat_async(mensagem: str, imagem_base64: Optional[str],
     
     payload = {
         "contents": contents,
-        "system_instruction": {
+        "systemInstruction": {
             "parts": [{"text": system_instruction}]
         },
         "generationConfig": {
@@ -608,18 +618,33 @@ async def _chamar_gemini_chat_async(mensagem: str, imagem_base64: Optional[str],
         }
     }
     
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(url, json=payload)
-        if resp.status_code != 200:
-            err_text = resp.text
-            log.error(f"[Gemini API] Erro {resp.status_code}: {err_text}")
-            raise HTTPException(status_code=resp.status_code, detail=f"Erro na API Gemini: {err_text}")
-        data = resp.json()
-        try:
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(url, json=payload)
+            if resp.status_code != 200:
+                err_text = resp.text
+                log.error(f"[Gemini API] Erro {resp.status_code}: {err_text}")
+                try:
+                    err_json = resp.json()
+                    msg_google = err_json.get("error", {}).get("message", err_text)
+                    status_google = err_json.get("error", {}).get("status", "")
+                    if "API_KEY_INVALID" in msg_google or "API key not valid" in msg_google:
+                        return "⚠️ **Chave de API do Gemini inválida.**\n\nPor favor, verifique se copiou a chave corretamente no [Google AI Studio](https://aistudio.google.com/app/apikey) e configure-a novamente no botão **⚙️ Chaves/API**."
+                    elif "RESOURCE_EXHAUSTED" in status_google or "quota" in msg_google.lower():
+                        return "⚠️ **Limite temporário de requisições excedido.**\n\nA cota gratuita por minuto do Gemini foi atingida. Aguarde cerca de 20 a 30 segundos e envie sua pergunta novamente."
+                    elif "NOT_FOUND" in status_google or "not found" in msg_google.lower():
+                        return f"⚠️ **Modelo Gemini não encontrado ({modelo_escolhido}).**\n\nErro: {msg_google}\n\nTente selecionar o modelo **gemini-1.5-flash** em Configurações."
+                    return f"⚠️ **Erro na API do Google Gemini ({resp.status_code}):**\n\n{msg_google}"
+                except Exception:
+                    return f"⚠️ **Erro na API do Google Gemini ({resp.status_code}):**\n\n{err_text}"
+
+            data = resp.json()
             return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except (KeyError, IndexError) as e:
-            log.error(f"[Gemini API] Estrutura inesperada: {data}")
-            return "Não foi possível obter resposta do Gemini."
+    except httpx.ConnectError:
+        return "⚠️ **Erro de conexão com a Internet.**\n\nNão foi possível alcançar os servidores do Google Gemini. Verifique sua conexão de rede."
+    except Exception as exc:
+        log.error(f"[Gemini API] Exceção inesperada: {exc}")
+        return f"⚠️ **Erro ao consultar Gemini:** {exc}"
 
 
 async def _chamar_ollama_chat_async(mensagem: str, imagem_base64: Optional[str], historico: List[ChatMensagem], modelo: Optional[str]) -> str:
@@ -654,12 +679,20 @@ async def _chamar_ollama_chat_async(mensagem: str, imagem_base64: Optional[str],
         "stream": False
     }
     
-    async with httpx.AsyncClient(timeout=90.0) as client:
-        resp = await client.post(url, json=payload)
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=f"Erro no Ollama: {resp.text}")
-        data = resp.json()
-        return data.get("message", {}).get("content", "").strip()
+    try:
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            resp = await client.post(url, json=payload)
+            if resp.status_code != 200:
+                return f"⚠️ **Erro no Ollama ({resp.status_code}):** {resp.text}"
+            data = resp.json()
+            return data.get("message", {}).get("content", "").strip()
+    except Exception as exc:
+        log.error(f"[Ollama] Erro de conexão: {exc}")
+        return (
+            "⚠️ **Não foi possível conectar ao servidor Ollama local (localhost:11434).**\n\n"
+            "Verifique se o Ollama está rodando no terminal (`ollama serve` ou `ollama run llama3`), "
+            "ou configure uma chave gratuita do Google Gemini no botão **⚙️ Chaves/API** acima."
+        )
 
 
 @app.post("/chat_ia", response_model=ChatIAResponse, tags=["Chat"])
@@ -679,25 +712,29 @@ async def chat_ia(body: ChatIARequest):
             # Tenta fallback para Ollama se disponível
             try:
                 resposta = await _chamar_ollama_chat_async(body.mensagem, body.imagem_base64, body.historico, body.modelo)
-                return ChatIAResponse(resposta=resposta, provedor_usado="ollama (fallback)", modelo_usado=body.modelo or "llama3")
+                if "Não foi possível conectar ao servidor Ollama" not in resposta:
+                    return ChatIAResponse(resposta=resposta, provedor_usado="ollama (fallback)", modelo_usado=body.modelo or "llama3")
             except Exception:
-                raise HTTPException(
-                    status_code=400, 
-                    detail="Chave de API do Gemini não configurada. Configure no menu superior 'Configurações' > 'Chaves de API e IA'."
-                )
-        try:
-            resposta = await _chamar_gemini_chat_async(body.mensagem, body.imagem_base64, body.historico, api_key, body.modelo)
-            return ChatIAResponse(resposta=resposta, provedor_usado="gemini", modelo_usado=body.modelo or "gemini-2.5-flash")
-        except HTTPException:
-            raise
-        except Exception as e:
-            log.error(f"Erro ao consultar Gemini: {e}")
-            raise HTTPException(status_code=500, detail=f"Erro ao consultar Gemini: {e}")
+                pass
+
+            return ChatIAResponse(
+                resposta=(
+                    "⚠️ **Chave de API do Google Gemini não configurada.**\n\n"
+                    "Para conversar com o Assistente IA e analisar circuitos com visão computacional:\n"
+                    "1. Clique no botão **⚙️ Chaves/API** no topo da aba (ou no menu *Configurações* > *Chaves de API e IA*).\n"
+                    "2. Cole sua chave gratuita obtida no [Google AI Studio](https://aistudio.google.com/app/apikey).\n"
+                    "3. Clique em **Salvar Configurações**.\n\n"
+                    "*(Se preferir usar IA 100% offline, selecione o provedor **Ollama** após iniciar `ollama run llama3` no terminal)*."
+                ),
+                provedor_usado="aviso",
+                modelo_usado="nenhum"
+            )
+
+        resposta = await _chamar_gemini_chat_async(body.mensagem, body.imagem_base64, body.historico, api_key, body.modelo)
+        return ChatIAResponse(resposta=resposta, provedor_usado="gemini", modelo_usado=body.modelo or "gemini-1.5-flash")
+
     else:
-        try:
-            resposta = await _chamar_ollama_chat_async(body.mensagem, body.imagem_base64, body.historico, body.modelo)
-            return ChatIAResponse(resposta=resposta, provedor_usado="ollama", modelo_usado=body.modelo or "llama3")
-        except Exception as e:
-            log.error(f"Erro ao consultar Ollama: {e}")
-            raise HTTPException(status_code=500, detail=f"Erro ao consultar Ollama: {e}")
+        resposta = await _chamar_ollama_chat_async(body.mensagem, body.imagem_base64, body.historico, body.modelo)
+        return ChatIAResponse(resposta=resposta, provedor_usado="ollama", modelo_usado=body.modelo or "llama3")
+
 

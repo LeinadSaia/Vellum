@@ -158,7 +158,7 @@ private:
     QJsonArray       m_chatHistoricoJson;
     QString          m_iaProvedor         = "gemini";
     QString          m_iaApiKey;
-    QString          m_iaModelo           = "gemini-2.5-flash";
+    QString          m_iaModelo           = "gemini-1.5-flash";
 
     QPoint           m_rbOrigin;
     QPoint           m_panOrigin;

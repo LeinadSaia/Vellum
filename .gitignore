@@ -1,0 +1,54 @@
+# Python
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# C++ / CMake / Qt Build Artifacts
+build/
+build*/
+qt_frontend/build/
+qt_frontend/build*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.ninja
+*.ninja_deps
+*.ninja_log
+compile_commands.json
+
+# Compiled binaries and libraries
+*.o
+*.obj
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+*.exe
+EnsinadorDeIngles
+EnsinadorDeIngles.exe
+
+# Qt Creator & IDEs
+*.user
+*.user.*
+.qtcreator/
+.vscode/
+.idea/
+.clangd*
+
+# Temporary audio or runtime logs
+*.wav
+*.mp3
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db

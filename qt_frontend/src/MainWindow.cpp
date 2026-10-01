@@ -1100,9 +1100,13 @@ void MainWindow::carregarConfiguracoes()
 
     m_iaProvedor = settings.value("iaProvedor", "gemini").toString();
     m_iaApiKey   = settings.value("iaApiKey", "").toString();
-    m_iaModelo   = settings.value("iaModelo", "gemini-1.5-flash").toString();
-    if (m_iaModelo == "gemini-2.5-flash" || m_iaModelo.isEmpty()) {
-        m_iaModelo = "gemini-1.5-flash";
+    m_iaModelo   = settings.value("iaModelo", "gemini-3.8-flash").toString();
+    // Migrar modelos obsoletos para o atual
+    static const QSet<QString> obsoletos = {
+        "gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.5-flash"
+    };
+    if (m_iaModelo.isEmpty() || obsoletos.contains(m_iaModelo)) {
+        m_iaModelo = "gemini-3.8-flash";
     }
     if (m_lblModeloAtivoChat) {
         m_lblModeloAtivoChat->setText(QString("IA: %1 (%2)").arg(m_iaProvedor.toUpper(), m_iaModelo));
@@ -1974,9 +1978,8 @@ void MainWindow::onConfigurarIA()
 
     // Modelo Gemini
     auto *comboModelo = new QComboBox(&dlg);
-    comboModelo->addItem("gemini-1.5-flash", "gemini-1.5-flash");
-    comboModelo->addItem("gemini-2.0-flash", "gemini-2.0-flash");
-    comboModelo->addItem("gemini-1.5-pro", "gemini-1.5-pro");
+    comboModelo->addItem("gemini-3.8-flash", "gemini-3.8-flash");
+    comboModelo->addItem("gemini-3.8-flash-lite", "gemini-3.8-flash-lite");
     const int idxMod = comboModelo->findData(m_iaModelo);
     if (idxMod >= 0) comboModelo->setCurrentIndex(idxMod);
     form->addRow("Modelo:", comboModelo);

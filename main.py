@@ -563,16 +563,14 @@ async def avaliar_pronuncia(body: AvaliarPronunciaRequest):
 # Assistente Técnico / Chat IA Multimodal (Gemini & Ollama)
 # ---------------------------------------------------------------------------
 async def _chamar_gemini_chat_async(mensagem: str, imagem_base64: Optional[str], historico: List[ChatMensagem], api_key: str, modelo: Optional[str]) -> str:
-    # Mapeamento e fallback para modelos válidos no Google AI Studio
+    # Mapeamento para modelos validos atualmente na API do Google (v1beta)
+    # gemini-3.8-flash e o modelo recomendado pela propria Google como substituto
     mod = (modelo or "").lower().strip()
-    if not mod or "2.5" in mod or mod == "gemini-flash":
-        modelo_escolhido = "gemini-1.5-flash"
-    elif "2.0" in mod:
-        modelo_escolhido = "gemini-2.0-flash"
-    elif "pro" in mod:
-        modelo_escolhido = "gemini-1.5-pro"
+    VALIDOS = {"gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3.0-flash"}
+    if not mod or mod not in VALIDOS:
+        modelo_escolhido = "gemini-3.8-flash"
     else:
-        modelo_escolhido = "gemini-1.5-flash"
+        modelo_escolhido = mod
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo_escolhido}:generateContent?key={api_key}"
     
@@ -632,8 +630,8 @@ async def _chamar_gemini_chat_async(mensagem: str, imagem_base64: Optional[str],
                         return "⚠️ **Chave de API do Gemini inválida.**\n\nPor favor, verifique se copiou a chave corretamente no [Google AI Studio](https://aistudio.google.com/app/apikey) e configure-a novamente no botão **⚙️ Chaves/API**."
                     elif "RESOURCE_EXHAUSTED" in status_google or "quota" in msg_google.lower():
                         return "⚠️ **Limite temporário de requisições excedido.**\n\nA cota gratuita por minuto do Gemini foi atingida. Aguarde cerca de 20 a 30 segundos e envie sua pergunta novamente."
-                    elif "NOT_FOUND" in status_google or "not found" in msg_google.lower():
-                        return f"⚠️ **Modelo Gemini não encontrado ({modelo_escolhido}).**\n\nErro: {msg_google}\n\nTente selecionar o modelo **gemini-1.5-flash** em Configurações."
+                    elif "NOT_FOUND" in status_google or "not found" in msg_google.lower() or "no longer available" in msg_google.lower():
+                        return f"Modelo Gemini nao disponivel ({modelo_escolhido}).\n\nErro: {msg_google}\n\nSelecione o modelo gemini-3.8-flash em Configurar API."
                     return f"⚠️ **Erro na API do Google Gemini ({resp.status_code}):**\n\n{msg_google}"
                 except Exception:
                     return f"⚠️ **Erro na API do Google Gemini ({resp.status_code}):**\n\n{err_text}"

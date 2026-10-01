@@ -20,6 +20,9 @@
 #include <QAction>
 #include <QMenuBar>
 #include <QMenu>
+#include <QTabWidget>
+#include <QComboBox>
+#include <QProgressBar>
 
 class NetworkManager;
 
@@ -32,7 +35,7 @@ enum class ModoVisualizacao {
 /**
  * MainWindow
  * ──────────
- * Leitor e Tradutor Técnico de Documentos PDF.
+ * Leitor e Tradutor Técnico de Documentos PDF com Tutor de Pronúncia Integrado.
  */
 class MainWindow : public QMainWindow
 {
@@ -44,18 +47,28 @@ public:
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
 
 private slots:
-    // ── Ações Principais ──────────────────────────────────────────────────
+    // ── Arquivo e Seleção ─────────────────────────────────────────────────
     void onAbrirPdf();
     void onFecharPdf();
     void onToggleModoCaptura(bool ativo);
     void onTraduzirDireto();
+    void onCopiarTraducao();
 
-    // ── Módulo Opcional de Treino ─────────────────────────────────────────
-    void onToggleModuloTreino(bool visivel);
-    void onGravarInterpretacao();
-    void onLimparOcr();
+    // ── Painel e Layout ───────────────────────────────────────────────────
+    void onTogglePainelLateral(bool visivel);
+    void onMudarAbaPainel(int index);
+    void onSalvarLayout();
+    void onRestaurarLayoutPadrao();
+    void onAplicarProporcao(int leitorPercent);
+
+    // ── Tutor de Pronúncia & Voz ──────────────────────────────────────────
+    void onOuvirPronuncia();
+    void onGravarVozTutor();
+    void onFalaIniciada(const QString &voz);
+    void onAvaliacaoPronunciaResultado(int nota, const QString &feedback, const QStringList &palavrasAusentes);
 
     // ── Navegação e Modos de Visualização ─────────────────────────────────
     void onPaginaAnterior();
@@ -72,24 +85,31 @@ private slots:
     void onAjustarPagina();
     void onZoomReset();
 
-    // ── Respostas do NetworkManager ───────────────────────────────────────
+    // ── Respostas de Rede ─────────────────────────────────────────────────
     void onTraducaoDiretaResultado(const QString &textoIngles, const QString &traducaoPortugues);
     void onLimparOcrResultado(const QString &texto);
     void onTranscricaoResultado(const QString &texto);
-    void onAvaliacaoResultado(int nota);
     void onServidorOnline(bool online);
     void onRequisicaoIniciada(const QString &endpoint);
     void onRequisicaoConcluida(const QString &endpoint);
     void onErroRequisicao(const QString &endpoint, const QString &mensagem);
     void onGravacaoIniciada();
 
+    // ── Configurações e Desempenho ────────────────────────────────────────
+    void onPerfilAlterado(int index);
+
 private:
-    // ── Setup ─────────────────────────────────────────────────────────────
     void setupMenuBar();
     void setupUi();
     QWidget* criarBarraVisualizacao();
+    QWidget* criarAbaTraducao();
+    QWidget* criarAbaTutor();
+    QWidget* criarAbaConfiguracoes();
     void setupStyleSheet();
     void connectSignals();
+
+    void carregarConfiguracoes();
+    void salvarConfiguracoes();
 
     void irParaPagina(int pagina);
     void setModoVisualizacao(ModoVisualizacao modo);
@@ -100,7 +120,6 @@ private:
 
     void capturarRegiaoRubberBand();
 
-    // ── Utilitários de UI ─────────────────────────────────────────────────
     void appendLog(const QString &mensagem, const QString &tipo = "info");
     void setButtonBusy(QPushButton *btn, bool busy);
 
@@ -113,27 +132,33 @@ private:
 
     QString          m_textoOcrAtual;
     QString          m_textoOriginalEn;
-    QString          m_textoTranscrito;
+    QString          m_textoTraduzidoPt;
 
     QPoint           m_rbOrigin;
     QPoint           m_panOrigin;
+
+    // ── Layout e Divisor ──────────────────────────────────────────────────
+    QSplitter       *m_splitter       = nullptr;
+    QWidget         *m_painelEsq      = nullptr;
+    QFrame          *m_painelDir      = nullptr;
+    QTabWidget      *m_tabWidget      = nullptr;
+    QWidget         *m_barraVis       = nullptr;
 
     // ── PDF ───────────────────────────────────────────────────────────────
     QPdfDocument    *m_pdfDoc         = nullptr;
     QPdfView        *m_pdfView        = nullptr;
     QPdfView        *m_pdfView2       = nullptr;
     QPdfView        *m_activePdfView  = nullptr;
-
-    // ── Rubber band ───────────────────────────────────────────────────────
     QRubberBand     *m_rubberBand     = nullptr;
 
     // ── Rede ──────────────────────────────────────────────────────────────
     NetworkManager  *m_net            = nullptr;
 
-    // ── Menus ─────────────────────────────────────────────────────────────
-    QAction         *m_actModoTreino  = nullptr;
+    // ── Ações do Menu ─────────────────────────────────────────────────────
+    QAction         *m_actTogglePainel = nullptr;
+    QAction         *m_actBarraLeitor  = nullptr;
 
-    // ── Barra Superior de PDF ─────────────────────────────────────────────
+    // ── Barra Superior de Navegação ───────────────────────────────────────
     QPushButton     *m_btnPagAnterior = nullptr;
     QPushButton     *m_btnPagProxima  = nullptr;
     QSpinBox        *m_spinPagina     = nullptr;
@@ -149,19 +174,28 @@ private:
     QPushButton     *m_btnAjustarLarg = nullptr;
     QPushButton     *m_btnAjustarPag  = nullptr;
 
-    // ── Painel Direito: Tradução Direta ───────────────────────────────────
-    QPushButton     *m_btnAbrir          = nullptr;
+    // ── Aba 1: Tradução ───────────────────────────────────────────────────
     QPushButton     *m_btnModoCaptura    = nullptr;
     QPushButton     *m_btnTraduzir       = nullptr;
+    QPushButton     *m_btnCopiarTraducao = nullptr;
     QCheckBox       *m_chkTraducaoAuto   = nullptr;
     QTextEdit       *m_txtTraducao       = nullptr;
 
-    // ── Seção Opcional: Treino & Pronúncia (Oculta por padrão) ─────────────
-    QWidget         *m_containerTreino   = nullptr;
+    // ── Aba 2: Tutor & Pronúncia ──────────────────────────────────────────
+    QComboBox       *m_comboVoz          = nullptr;
     QPushButton     *m_btnOuvir          = nullptr;
     QPushButton     *m_btnGravar         = nullptr;
-    QPushButton     *m_btnLimparOcr      = nullptr;
+    QProgressBar    *m_barAcuracia       = nullptr;
+    QLabel          *m_lblAcuracia       = nullptr;
+    QTextEdit       *m_txtFeedbackTutor  = nullptr;
 
+    // ── Aba 3: Desempenho & Layout ────────────────────────────────────────
+    QComboBox       *m_comboPerfil       = nullptr;
+    QPushButton     *m_btnSalvarLayout   = nullptr;
+    QPushButton     *m_btnRestaurarLayout= nullptr;
+    QPushButton     *m_btnProporcao100   = nullptr;
+    QPushButton     *m_btnProporcao70    = nullptr;
+    QPushButton     *m_btnProporcao50    = nullptr;
     QTextEdit       *m_logBox            = nullptr;
     QLabel          *m_lblStatus         = nullptr;
 };

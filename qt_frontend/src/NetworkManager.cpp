@@ -2,10 +2,13 @@
 
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QNetworkRequest>
-#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonValue>
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// Construtor
+// ═════════════════════════════════════════════════════════════════════════════
+
 NetworkManager::NetworkManager(const QString &baseUrl, QObject *parent)
     : QObject(parent)
     , m_nam(new QNetworkAccessManager(this))
@@ -13,9 +16,9 @@ NetworkManager::NetworkManager(const QString &baseUrl, QObject *parent)
 {
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers privados
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// Auxiliares Internos
+// ═════════════════════════════════════════════════════════════════════════════
 
 QNetworkReply* NetworkManager::postJson(const QString &endpoint, const QByteArray &jsonBody)
 {
@@ -50,9 +53,23 @@ int NetworkManager::extrairCampoInt(const QByteArray &jsonData, const QString &c
     return doc.object().value(campo).toInt(fallback);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+QStringList NetworkManager::extrairCampoListaString(const QByteArray &jsonData, const QString &campo)
+{
+    QStringList lista;
+    QJsonParseError err;
+    const auto doc = QJsonDocument::fromJson(jsonData, &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject())
+        return lista;
+    const auto array = doc.object().value(campo).toArray();
+    for (const auto &val : array) {
+        lista.append(val.toString());
+    }
+    return lista;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // Métodos Públicos
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 
 void NetworkManager::verificarConexao()
 {
@@ -63,8 +80,6 @@ void NetworkManager::verificarConexao()
         reply->deleteLater();
     });
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 void NetworkManager::limparOcr(const QString &textoSujo)
 {
@@ -96,12 +111,8 @@ void NetworkManager::limparOcr(const QString &textoSujo)
     });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-
 void NetworkManager::processarImagemOcr(const QByteArray &imagemBase64)
 {
-    // Este endpoint espera {"imagem_base64": "...PNG em base64..."}
-    // O backend deve ter sido atualizado para aceitar este campo.
     const QString endpoint = "/limpar_ocr";
     emit requisicaoIniciada(endpoint);
 
@@ -126,14 +137,11 @@ void NetworkManager::processarImagemOcr(const QByteArray &imagemBase64)
     });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-
 void NetworkManager::gravarETranscrever()
 {
     const QString endpoint = "/gravar_e_transcrever";
     emit requisicaoIniciada(endpoint);
 
-    // Sem body — o servidor aciona o microfone dele mesmo
     auto *reply = postJson(endpoint, QByteArrayLiteral("{}"));
 
     connect(reply, &QNetworkReply::finished, this, [this, reply, endpoint]() {
@@ -155,8 +163,6 @@ void NetworkManager::gravarETranscrever()
     });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-
 void NetworkManager::iniciarGravacao()
 {
     const QString endpoint = "/iniciar_gravacao";
@@ -177,11 +183,9 @@ void NetworkManager::iniciarGravacao()
     });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-
-void NetworkManager::pararGravacao()
+void NetworkManager::pararGravacao(const QString &idioma)
 {
-    const QString endpoint = "/parar_gravacao";
+    const QString endpoint = "/parar_gravacao?idioma=" + idioma;
     emit requisicaoIniciada(endpoint);
 
     auto *reply = postJson(endpoint, QByteArrayLiteral("{}"));
@@ -204,11 +208,6 @@ void NetworkManager::pararGravacao()
         emit transcricaoResultado(texto);
     });
 }
-
-
-
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 void NetworkManager::avaliarTraducao(const QString &textoIngles, const QString &textoPortugues)
 {
@@ -236,8 +235,6 @@ void NetworkManager::avaliarTraducao(const QString &textoIngles, const QString &
         emit avaliacaoResultado(nota);
     });
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 void NetworkManager::traduzirDireto(const QString &textoIngles, const QByteArray &imagemBase64)
 {
@@ -271,3 +268,66 @@ void NetworkManager::traduzirDireto(const QString &textoIngles, const QByteArray
     });
 }
 
+void NetworkManager::falarTexto(const QString &texto, const QString &voz, const QString &velocidade)
+{
+    const QString endpoint = "/falar";
+    emit requisicaoIniciada(endpoint);
+
+    QJsonObject body;
+    body["texto"] = texto;
+    body["voz"] = voz;
+    body["velocidade"] = velocidade;
+    const QByteArray jsonBody = QJsonDocument(body).toJson(QJsonDocument::Compact);
+
+    auto *reply = postJson(endpoint, jsonBody);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, endpoint, voz]() {
+        emit requisicaoConcluida(endpoint);
+        reply->deleteLater();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            emit erroRequisicao(endpoint,
+                QStringLiteral("Erro na síntese de voz: %1").arg(reply->errorString()));
+            return;
+        }
+
+        emit falaIniciada(voz);
+    });
+}
+
+void NetworkManager::pararAudio()
+{
+    auto *reply = postJson("/parar_audio", QByteArrayLiteral("{}"));
+    connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
+}
+
+void NetworkManager::avaliarPronuncia(const QString &textoEsperado, const QString &textoFalado)
+{
+    const QString endpoint = "/avaliar_pronuncia";
+    emit requisicaoIniciada(endpoint);
+
+    QJsonObject body;
+    body["texto_esperado"] = textoEsperado;
+    body["texto_falado"] = textoFalado;
+    const QByteArray jsonBody = QJsonDocument(body).toJson(QJsonDocument::Compact);
+
+    auto *reply = postJson(endpoint, jsonBody);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, endpoint]() {
+        emit requisicaoConcluida(endpoint);
+        reply->deleteLater();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            emit erroRequisicao(endpoint,
+                QStringLiteral("Erro na avaliação de pronúncia: %1").arg(reply->errorString()));
+            return;
+        }
+
+        const QByteArray resp = reply->readAll();
+        const int nota = extrairCampoInt(resp, "nota", 0);
+        const QString feedback = extrairCampoString(resp, "feedback");
+        const QStringList ausentes = extrairCampoListaString(resp, "palavras_ausentes");
+
+        emit avaliacaoPronunciaResultado(nota, feedback, ausentes);
+    });
+}

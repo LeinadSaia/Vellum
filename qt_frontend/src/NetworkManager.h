@@ -8,6 +8,7 @@
 #include <QStringList>
 #include <QByteArray>
 #include <QUrl>
+#include <QJsonArray>
 
 /**
  * NetworkManager
@@ -56,6 +57,14 @@ public:
     /** POST /avaliar_pronuncia (Tutor de fala com nível) */
     void avaliarPronuncia(const QString &textoEsperado, const QString &textoFalado, const QString &nivel = "intermediario");
 
+    /** POST /chat_ia (Assistente com IA multimodal para circuitos e dúvidas) */
+    void enviarMensagemChat(const QString &mensagem, 
+                            const QString &imagemBase64 = QString(), 
+                            const QJsonArray &historico = QJsonArray(), 
+                            const QString &provedor = "gemini", 
+                            const QString &apiKey = QString(), 
+                            const QString &modelo = QString());
+
 signals:
     void traducaoDiretaResultado(const QString &textoIngles, const QString &traducaoPortugues);
     void limparOcrResultado(const QString &textoPronto);
@@ -67,6 +76,9 @@ signals:
     /** TTS e Tutor */
     void falaIniciada(const QString &voz);
     void avaliacaoPronunciaResultado(int nota, const QString &feedback, const QString &textoFalado, const QStringList &palavrasAusentes);
+
+    /** Chat IA */
+    void chatRespostaResultado(const QString &resposta, const QString &provedorUsado, const QString &modeloUsado);
 
     void requisicaoIniciada(const QString &endpoint);
     void requisicaoConcluida(const QString &endpoint);

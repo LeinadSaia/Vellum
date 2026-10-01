@@ -33,6 +33,7 @@ import edge_tts
 import miniaudio
 from PIL import Image, ImageOps
 import pytesseract
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -394,6 +395,24 @@ class AvaliarPronunciaResponse(BaseModel):
     palavras_ausentes: List[str]
     palavras_faladas: List[str]
 
+class ChatMensagem(BaseModel):
+    role: str  # "user" ou "assistant"
+    content: str
+
+class ChatIARequest(BaseModel):
+    mensagem: str = ""
+    imagem_base64: Optional[str] = None
+    historico: List[ChatMensagem] = []
+    provedor: Optional[str] = "gemini"  # "gemini" | "ollama"
+    api_key: Optional[str] = None
+    modelo: Optional[str] = None
+
+class ChatIAResponse(BaseModel):
+    resposta: str
+    provedor_usado: str
+    modelo_usado: str
+
+
 
 # ---------------------------------------------------------------------------
 # Endpoints
@@ -538,3 +557,147 @@ async def avaliar_pronuncia(body: AvaliarPronunciaRequest):
         raise HTTPException(status_code=500, detail=f"Erro na avaliação de pronúncia: {exc}")
 
     return AvaliarPronunciaResponse(**resultado)
+
+
+# ---------------------------------------------------------------------------
+# Assistente Técnico / Chat IA Multimodal (Gemini & Ollama)
+# ---------------------------------------------------------------------------
+async def _chamar_gemini_chat_async(mensagem: str, imagem_base64: Optional[str], historico: List[ChatMensagem], api_key: str, modelo: Optional[str]) -> str:
+    modelo_escolhido = modelo or "gemini-2.5-flash"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo_escolhido}:generateContent?key={api_key}"
+    
+    system_instruction = (
+        "Você é um engenheiro sênior e tutor especialista em Engenharia Elétrica, Eletrônica, Telecomunicações e Computação. "
+        "Auxilie o estudante a entender livros e papers em inglês, tirando dúvidas conceituais, explicando esquemáticos e circuitos "
+        "(como NPN, PNP, MOSFETs, polarização DC, pequenas sinais, Leis de Kirchhoff, Thévenin, Miller, filtros, amplificadores operacionais). "
+        "Quando uma imagem de circuito for enviada, analise detalhadamente a topologia, componentes e equações de malha/nó. "
+        "Responda sempre em Português do Brasil com máxima clareza técnica, objetividade, equações bem estruturadas e formatação didática."
+    )
+    
+    contents = []
+    for h in historico:
+        r = "user" if h.role == "user" else "model"
+        contents.append({"role": r, "parts": [{"text": h.content}]})
+        
+    current_parts = []
+    if imagem_base64:
+        raw_b64 = imagem_base64
+        if "base64," in raw_b64:
+            raw_b64 = raw_b64.split("base64,")[-1]
+        elif raw_b64.startswith("BASE64:"):
+            raw_b64 = raw_b64[7:]
+        raw_b64 = raw_b64.strip()
+        current_parts.append({
+            "inline_data": {
+                "mime_type": "image/png",
+                "data": raw_b64
+            }
+        })
+    texto_usuario = mensagem.strip() if mensagem else "Por favor, analise o circuito/imagem anexada e explique seus principais aspectos técnicos."
+    current_parts.append({"text": texto_usuario})
+    contents.append({"role": "user", "parts": current_parts})
+    
+    payload = {
+        "contents": contents,
+        "system_instruction": {
+            "parts": [{"text": system_instruction}]
+        },
+        "generationConfig": {
+            "temperature": 0.3,
+            "maxOutputTokens": 2048
+        }
+    }
+    
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(url, json=payload)
+        if resp.status_code != 200:
+            err_text = resp.text
+            log.error(f"[Gemini API] Erro {resp.status_code}: {err_text}")
+            raise HTTPException(status_code=resp.status_code, detail=f"Erro na API Gemini: {err_text}")
+        data = resp.json()
+        try:
+            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except (KeyError, IndexError) as e:
+            log.error(f"[Gemini API] Estrutura inesperada: {data}")
+            return "Não foi possível obter resposta do Gemini."
+
+
+async def _chamar_ollama_chat_async(mensagem: str, imagem_base64: Optional[str], historico: List[ChatMensagem], modelo: Optional[str]) -> str:
+    modelo_escolhido = modelo or ("llama3.2-vision" if imagem_base64 else "llama3")
+    url = "http://localhost:11434/api/chat"
+    
+    system_instruction = (
+        "Você é um engenheiro sênior e tutor especialista em Engenharia Elétrica, Eletrônica e Computação. "
+        "Auxilie o estudante a entender livros em inglês, explicando conceitos, circuitos e equações. "
+        "Responda em Português do Brasil com clareza e precisão técnica."
+    )
+    
+    messages = [{"role": "system", "content": system_instruction}]
+    for h in historico:
+        messages.append({"role": h.role, "content": h.content})
+        
+    texto_usuario = mensagem.strip() if mensagem else "Analise o circuito anexado."
+    curr_msg = {"role": "user", "content": texto_usuario}
+    if imagem_base64:
+        raw_b64 = imagem_base64
+        if "base64," in raw_b64:
+            raw_b64 = raw_b64.split("base64,")[-1]
+        elif raw_b64.startswith("BASE64:"):
+            raw_b64 = raw_b64[7:]
+        curr_msg["images"] = [raw_b64.strip()]
+        
+    messages.append(curr_msg)
+    
+    payload = {
+        "model": modelo_escolhido,
+        "messages": messages,
+        "stream": False
+    }
+    
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        resp = await client.post(url, json=payload)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"Erro no Ollama: {resp.text}")
+        data = resp.json()
+        return data.get("message", {}).get("content", "").strip()
+
+
+@app.post("/chat_ia", response_model=ChatIAResponse, tags=["Chat"])
+async def chat_ia(body: ChatIARequest):
+    """
+    Assistente técnico com IA multimodal (Gemini ou Ollama) para tirar dúvidas
+    sobre excertos do livro, circuitos e diagramas esquemáticos com imagens.
+    """
+    if not body.mensagem.strip() and not body.imagem_base64:
+        raise HTTPException(status_code=422, detail="Envie uma mensagem ou uma imagem de circuito.")
+
+    provedor = (body.provedor or "gemini").lower().strip()
+    api_key = (body.api_key or os.environ.get("GEMINI_API_KEY", "")).strip()
+
+    if provedor == "gemini":
+        if not api_key:
+            # Tenta fallback para Ollama se disponível
+            try:
+                resposta = await _chamar_ollama_chat_async(body.mensagem, body.imagem_base64, body.historico, body.modelo)
+                return ChatIAResponse(resposta=resposta, provedor_usado="ollama (fallback)", modelo_usado=body.modelo or "llama3")
+            except Exception:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Chave de API do Gemini não configurada. Configure no menu superior 'Configurações' > 'Chaves de API e IA'."
+                )
+        try:
+            resposta = await _chamar_gemini_chat_async(body.mensagem, body.imagem_base64, body.historico, api_key, body.modelo)
+            return ChatIAResponse(resposta=resposta, provedor_usado="gemini", modelo_usado=body.modelo or "gemini-2.5-flash")
+        except HTTPException:
+            raise
+        except Exception as e:
+            log.error(f"Erro ao consultar Gemini: {e}")
+            raise HTTPException(status_code=500, detail=f"Erro ao consultar Gemini: {e}")
+    else:
+        try:
+            resposta = await _chamar_ollama_chat_async(body.mensagem, body.imagem_base64, body.historico, body.modelo)
+            return ChatIAResponse(resposta=resposta, provedor_usado="ollama", modelo_usado=body.modelo or "llama3")
+        except Exception as e:
+            log.error(f"Erro ao consultar Ollama: {e}")
+            raise HTTPException(status_code=500, detail=f"Erro ao consultar Ollama: {e}")
+

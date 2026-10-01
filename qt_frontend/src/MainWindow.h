@@ -23,6 +23,8 @@
 #include <QTabWidget>
 #include <QComboBox>
 #include <QProgressBar>
+#include <QJsonArray>
+#include <QTextBrowser>
 
 class NetworkManager;
 
@@ -71,6 +73,16 @@ private slots:
     void onFalaIniciada(const QString &voz);
     void onAvaliacaoPronunciaResultado(int nota, const QString &feedback, const QString &textoFalado, const QStringList &palavrasAusentes);
 
+    // ── Assistente IA & Chat ──────────────────────────────────────────────
+    void onEnviarChat();
+    void onLimparChat();
+    void onCapturarCircuitoChat();
+    void onAnexarImagemChat();
+    void onRemoverImagemChat();
+    void onColarTrechoChat();
+    void onConfigurarIA();
+    void onChatRespostaResultado(const QString &resposta, const QString &provedor, const QString &modelo);
+
     // ── Navegação e Modos de Visualização ─────────────────────────────────
     void onPaginaAnterior();
     void onPaginaProxima();
@@ -105,6 +117,7 @@ private:
     QWidget* criarBarraVisualizacao();
     QWidget* criarAbaTraducao();
     QWidget* criarAbaTutor();
+    QWidget* criarAbaChatIA();
     QWidget* criarAbaConfiguracoes();
     void setupStyleSheet();
     void connectSignals();
@@ -113,6 +126,7 @@ private:
     void salvarConfiguracoes();
 
     void irParaPagina(int pagina);
+    void forcarNavegacaoPagina(int pagina);
     void setModoVisualizacao(ModoVisualizacao modo);
     void aplicarZoom(qreal fator);
     void zoomDelta(qreal delta);
@@ -125,6 +139,9 @@ private:
     void setButtonBusy(QPushButton *btn, bool busy);
 
     // ── Estado interno ────────────────────────────────────────────────────
+    enum class ModoCapturaRubberBand { Nenhum, Traducao, CircuitoChat };
+    ModoCapturaRubberBand m_tipoCaptura = ModoCapturaRubberBand::Nenhum;
+
     bool             m_modoCaptura        = false;
     bool             m_gravando           = false;
     bool             m_panAtivo           = false;
@@ -135,6 +152,13 @@ private:
     QString          m_textoOcrAtual;
     QString          m_textoOriginalEn;
     QString          m_textoTraduzidoPt;
+
+    // Chat IA State
+    QString          m_chatImagemBase64;
+    QJsonArray       m_chatHistoricoJson;
+    QString          m_iaProvedor         = "gemini";
+    QString          m_iaApiKey;
+    QString          m_iaModelo           = "gemini-2.5-flash";
 
     QPoint           m_rbOrigin;
     QPoint           m_panOrigin;
@@ -194,7 +218,22 @@ private:
     QLabel          *m_lblAcuracia       = nullptr;
     QTextEdit       *m_txtFeedbackTutor  = nullptr;
 
-    // ── Aba 3: Desempenho & Layout ────────────────────────────────────────
+    // ── Aba 3: Assistente IA & Chat ──────────────────────────────────────
+    QTextBrowser    *m_chatHistorico     = nullptr;
+    QTextEdit       *m_chatInput         = nullptr;
+    QPushButton     *m_btnChatEnviar     = nullptr;
+    QPushButton     *m_btnCapturarCircuito = nullptr;
+    QPushButton     *m_btnAnexarImagem   = nullptr;
+    QPushButton     *m_btnColarTrecho    = nullptr;
+    QWidget         *m_chatPreviewWidget = nullptr;
+    QLabel          *m_chatThumbLabel    = nullptr;
+    QLabel          *m_chatThumbTexto    = nullptr;
+    QPushButton     *m_btnRemoverThumb   = nullptr;
+    QLabel          *m_lblModeloAtivoChat= nullptr;
+    QPushButton     *m_btnConfigurarIA   = nullptr;
+    QPushButton     *m_btnLimparChat     = nullptr;
+
+    // ── Aba 4: Desempenho & Layout ────────────────────────────────────────
     QComboBox       *m_comboPerfil       = nullptr;
     QPushButton     *m_btnSalvarLayout   = nullptr;
     QPushButton     *m_btnRestaurarLayout= nullptr;
@@ -204,3 +243,4 @@ private:
     QTextEdit       *m_logBox            = nullptr;
     QLabel          *m_lblStatus         = nullptr;
 };
+

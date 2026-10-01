@@ -26,6 +26,13 @@
 #include <QSettings>
 #include <QCloseEvent>
 #include <QTimer>
+#include <QDialog>
+#include <QFormLayout>
+#include <QLineEdit>
+#include <QTextBrowser>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QJsonDocument>
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Construtor e Inicialização
@@ -142,9 +149,13 @@ void MainWindow::setupMenuBar()
     actAbaTutor->setShortcut(QKeySequence("Ctrl+U"));
     connect(actAbaTutor, &QAction::triggered, this, [this]() { onMudarAbaPainel(1); });
 
+    auto *actAbaChat = menuPainel->addAction("Ir para Assistente IA & Dúvidas");
+    actAbaChat->setShortcut(QKeySequence("Ctrl+I"));
+    connect(actAbaChat, &QAction::triggered, this, [this]() { onMudarAbaPainel(2); });
+
     auto *actAbaConfig = menuPainel->addAction("Ir para Desempenho & Layout");
     actAbaConfig->setShortcut(QKeySequence("Ctrl+D"));
-    connect(actAbaConfig, &QAction::triggered, this, [this]() { onMudarAbaPainel(2); });
+    connect(actAbaConfig, &QAction::triggered, this, [this]() { onMudarAbaPainel(3); });
 
     // ── Menu Layout ───────────────────────────────────────────────────────
     auto *menuLayout = menuBar->addMenu("&Layout");
@@ -166,6 +177,13 @@ void MainWindow::setupMenuBar()
 
     auto *actProp50 = menuLayout->addAction("Divisão Equilibrada (50% / 50%)");
     connect(actProp50, &QAction::triggered, this, [this]() { onAplicarProporcao(50); });
+
+    // ── Menu Configurações ────────────────────────────────────────────────
+    auto *menuConfig = menuBar->addMenu("&Configurações");
+
+    auto *actConfigurarIA = menuConfig->addAction("Chaves de API e IA (Gemini / Ollama)...");
+    actConfigurarIA->setShortcut(QKeySequence("Ctrl+Shift+I"));
+    connect(actConfigurarIA, &QAction::triggered, this, &MainWindow::onConfigurarIA);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -232,6 +250,7 @@ void MainWindow::setupUi()
 
     m_tabWidget->addTab(criarAbaTraducao(), "Tradução");
     m_tabWidget->addTab(criarAbaTutor(), "Tutor de Fala");
+    m_tabWidget->addTab(criarAbaChatIA(), "💬 Assistente IA");
     m_tabWidget->addTab(criarAbaConfiguracoes(), "Desempenho & Layout");
 
     layoutDir->addWidget(m_tabWidget);
@@ -389,7 +408,146 @@ QWidget* MainWindow::criarAbaTutor()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Aba 3: Desempenho & Layout
+// Aba 3: Assistente IA & Chat Técnico Multimodal
+// ─────────────────────────────────────────────────────────────────────────────
+
+QWidget* MainWindow::criarAbaChatIA()
+{
+    auto *aba = new QWidget();
+    auto *layout = new QVBoxLayout(aba);
+    layout->setContentsMargins(4, 8, 4, 4);
+    layout->setSpacing(6);
+
+    // Barra Superior: Status do Modelo e Atalho para Configurações
+    auto *layoutHeader = new QHBoxLayout();
+    layoutHeader->setSpacing(6);
+
+    m_lblModeloAtivoChat = new QLabel(QString("IA: %1 (%2)").arg(m_iaProvedor.toUpper(), m_iaModelo), aba);
+    m_lblModeloAtivoChat->setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 500;");
+    layoutHeader->addWidget(m_lblModeloAtivoChat, 1);
+
+    m_btnConfigurarIA = new QPushButton("⚙️ Chaves/API", aba);
+    m_btnConfigurarIA->setObjectName("btnSecundario");
+    m_btnConfigurarIA->setToolTip("Configurar Chave do Google Gemini ou Servidor Ollama");
+    layoutHeader->addWidget(m_btnConfigurarIA);
+
+    m_btnLimparChat = new QPushButton("🗑️ Limpar", aba);
+    m_btnLimparChat->setObjectName("btnSecundario");
+    m_btnLimparChat->setToolTip("Limpar histórico de conversa");
+    layoutHeader->addWidget(m_btnLimparChat);
+
+    layout->addLayout(layoutHeader);
+
+    // Histórico da Conversa
+    m_chatHistorico = new QTextBrowser(aba);
+    m_chatHistorico->setObjectName("chatHistorico");
+    m_chatHistorico->setOpenExternalLinks(true);
+    m_chatHistorico->setStyleSheet(
+        "QTextBrowser#chatHistorico {"
+        "  background-color: #12141a;"
+        "  border: 1px solid #282c37;"
+        "  border-radius: 8px;"
+        "  padding: 10px;"
+        "  color: #e2e8f0;"
+        "  font-size: 13px;"
+        "  line-height: 1.5;"
+        "}"
+    );
+    m_chatHistorico->setHtml(
+        "<div style='color: #94a3b8; font-size: 13px; line-height: 1.5;'>"
+        "<b style='color: #60a5fa;'>💬 Assistente Técnico & Circuitos</b><br>"
+        "Tire dúvidas técnicas de engenharia sobre este livro, teoremas e esquemáticos elétricos.<br><br>"
+        "💡 <b>Como utilizar:</b><br>"
+        "• Clique em <b>✂️ Circuito do PDF</b> e selecione o esquemático com o mouse para a IA analisar a topologia, componentes e leis de nós/malhas.<br>"
+        "• Use <b>📄 Colar Trecho</b> para perguntar sobre o parágrafo lido.<br>"
+        "• Configure sua chave gratuita do Gemini em <b>⚙️ Chaves/API</b> acima."
+        "</div>"
+    );
+    layout->addWidget(m_chatHistorico, 1);
+
+    // Preview do Circuito / Imagem Anexada (inicialmente oculto)
+    m_chatPreviewWidget = new QWidget(aba);
+    auto *previewLayout = new QHBoxLayout(m_chatPreviewWidget);
+    previewLayout->setContentsMargins(6, 4, 6, 4);
+    previewLayout->setSpacing(8);
+    m_chatPreviewWidget->setStyleSheet("background-color: #1a1f29; border: 1px solid #334155; border-radius: 6px;");
+
+    m_chatThumbLabel = new QLabel(m_chatPreviewWidget);
+    m_chatThumbLabel->setFixedSize(48, 48);
+    m_chatThumbLabel->setScaledContents(true);
+    m_chatThumbLabel->setStyleSheet("border: 1px solid #475569; border-radius: 4px; background: #0f172a;");
+    previewLayout->addWidget(m_chatThumbLabel);
+
+    m_chatThumbTexto = new QLabel("Circuito anexado para análise técnica", m_chatPreviewWidget);
+    m_chatThumbTexto->setStyleSheet("color: #e2e8f0; font-size: 11px;");
+    previewLayout->addWidget(m_chatThumbTexto, 1);
+
+    m_btnRemoverThumb = new QPushButton("✖", m_chatPreviewWidget);
+    m_btnRemoverThumb->setFixedSize(24, 24);
+    m_btnRemoverThumb->setToolTip("Remover anexo");
+    m_btnRemoverThumb->setStyleSheet("background: transparent; color: #ef4444; font-size: 13px; border: none; font-weight: bold;");
+    previewLayout->addWidget(m_btnRemoverThumb);
+
+    m_chatPreviewWidget->setVisible(false);
+    layout->addWidget(m_chatPreviewWidget);
+
+    // Barra de Ferramentas / Ações Rápidas
+    auto *layoutAcoes = new QHBoxLayout();
+    layoutAcoes->setSpacing(6);
+
+    m_btnCapturarCircuito = new QPushButton("✂️ Circuito do PDF", aba);
+    m_btnCapturarCircuito->setObjectName("btnSecundario");
+    m_btnCapturarCircuito->setToolTip("Selecione um circuito ou esquema no livro para a IA analisar");
+    layoutAcoes->addWidget(m_btnCapturarCircuito);
+
+    m_btnAnexarImagem = new QPushButton("📎 Imagem...", aba);
+    m_btnAnexarImagem->setObjectName("btnSecundario");
+    m_btnAnexarImagem->setToolTip("Anexar arquivo de imagem do seu computador");
+    layoutAcoes->addWidget(m_btnAnexarImagem);
+
+    m_btnColarTrecho = new QPushButton("📄 Colar Trecho", aba);
+    m_btnColarTrecho->setObjectName("btnSecundario");
+    m_btnColarTrecho->setToolTip("Inclui o texto do OCR na sua pergunta");
+    layoutAcoes->addWidget(m_btnColarTrecho);
+
+    layout->addLayout(layoutAcoes);
+
+    // Campo de Entrada e Botão Enviar
+    auto *layoutInput = new QHBoxLayout();
+    layoutInput->setSpacing(6);
+
+    m_chatInput = new QTextEdit(aba);
+    m_chatInput->setObjectName("chatInput");
+    m_chatInput->setMaximumHeight(70);
+    m_chatInput->setPlaceholderText("Pergunte sobre o circuito ou texto... (Ctrl+Enter para enviar)");
+    m_chatInput->setStyleSheet(
+        "QTextEdit#chatInput {"
+        "  background-color: #1a1c22;"
+        "  border: 1px solid #2d313b;"
+        "  border-radius: 6px;"
+        "  padding: 6px;"
+        "  color: #f1f5f9;"
+        "  font-size: 12px;"
+        "}"
+        "QTextEdit#chatInput:focus {"
+        "  border: 1px solid #3b82f6;"
+        "}"
+    );
+    layoutInput->addWidget(m_chatInput, 1);
+
+    m_btnChatEnviar = new QPushButton("➤", aba);
+    m_btnChatEnviar->setObjectName("btnPrimario");
+    m_btnChatEnviar->setFixedSize(50, 70);
+    m_btnChatEnviar->setToolTip("Enviar pergunta para a IA (Ctrl+Enter)");
+    layoutInput->addWidget(m_btnChatEnviar);
+
+    layout->addLayout(layoutInput);
+
+    return aba;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Aba 4: Desempenho & Layout
 // ─────────────────────────────────────────────────────────────────────────────
 
 QWidget* MainWindow::criarAbaConfiguracoes()
@@ -885,6 +1043,16 @@ void MainWindow::connectSignals()
     connect(m_net, &NetworkManager::gravacaoIniciada,             this, &MainWindow::onGravacaoIniciada);
     connect(m_net, &NetworkManager::falaIniciada,                 this, &MainWindow::onFalaIniciada);
     connect(m_net, &NetworkManager::avaliacaoPronunciaResultado,  this, &MainWindow::onAvaliacaoPronunciaResultado);
+    connect(m_net, &NetworkManager::chatRespostaResultado,        this, &MainWindow::onChatRespostaResultado);
+
+    // Assistente IA & Chat
+    connect(m_btnConfigurarIA,     &QPushButton::clicked, this, &MainWindow::onConfigurarIA);
+    connect(m_btnLimparChat,       &QPushButton::clicked, this, &MainWindow::onLimparChat);
+    connect(m_btnCapturarCircuito, &QPushButton::clicked, this, &MainWindow::onCapturarCircuitoChat);
+    connect(m_btnAnexarImagem,     &QPushButton::clicked, this, &MainWindow::onAnexarImagemChat);
+    connect(m_btnRemoverThumb,     &QPushButton::clicked, this, &MainWindow::onRemoverImagemChat);
+    connect(m_btnColarTrecho,      &QPushButton::clicked, this, &MainWindow::onColarTrechoChat);
+    connect(m_btnChatEnviar,       &QPushButton::clicked, this, &MainWindow::onEnviarChat);
 
     connect(m_pdfView->pageNavigator(), &QPdfPageNavigator::currentPageChanged,
             this, [this](int pag) {
@@ -929,6 +1097,13 @@ void MainWindow::carregarConfiguracoes()
     if (nivelIndex >= 0 && nivelIndex < m_comboNivelTutor->count()) {
         m_comboNivelTutor->setCurrentIndex(nivelIndex);
     }
+
+    m_iaProvedor = settings.value("iaProvedor", "gemini").toString();
+    m_iaApiKey   = settings.value("iaApiKey", "").toString();
+    m_iaModelo   = settings.value("iaModelo", "gemini-2.5-flash").toString();
+    if (m_lblModeloAtivoChat) {
+        m_lblModeloAtivoChat->setText(QString("IA: %1 (%2)").arg(m_iaProvedor.toUpper(), m_iaModelo));
+    }
 }
 
 void MainWindow::salvarConfiguracoes()
@@ -941,6 +1116,9 @@ void MainWindow::salvarConfiguracoes()
     settings.setValue("vozIndex", m_comboVoz->currentIndex());
     settings.setValue("velIndex", m_comboVelocidade->currentIndex());
     settings.setValue("nivelIndex", m_comboNivelTutor->currentIndex());
+    settings.setValue("iaProvedor", m_iaProvedor);
+    settings.setValue("iaApiKey", m_iaApiKey);
+    settings.setValue("iaModelo", m_iaModelo);
 }
 
 void MainWindow::onSalvarLayout()
@@ -1042,6 +1220,9 @@ void MainWindow::onToggleModoCaptura(bool ativo)
 {
     m_modoCaptura = ativo;
     m_btnModoCaptura->setChecked(ativo);
+    if (ativo) {
+        m_tipoCaptura = ModoCapturaRubberBand::Traducao;
+    }
 
     const auto cursor = ativo ? Qt::CrossCursor : Qt::ArrowCursor;
     m_pdfView->viewport()->setCursor(cursor);
@@ -1245,6 +1426,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         if (me->button() == Qt::LeftButton && m_modoCaptura && m_rubberBand->isVisible()) {
             const QRect rect = m_rubberBand->geometry();
             m_rubberBand->hide();
+            const auto tipoCaptura = m_tipoCaptura;
             onToggleModoCaptura(false);
 
             if (rect.width() > 15 && rect.height() > 10) {
@@ -1254,15 +1436,35 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 buf.open(QIODevice::WriteOnly);
                 pix.save(&buf, "PNG");
 
-                m_textoOcrAtual = "BASE64:" + bytes.toBase64();
-                m_btnTraduzir->setEnabled(true);
-
-                if (m_chkTraducaoAuto->isChecked()) {
-                    onTraduzirDireto();
+                if (tipoCaptura == ModoCapturaRubberBand::CircuitoChat) {
+                    m_chatImagemBase64 = QString::fromLatin1(bytes.toBase64());
+                    if (m_chatThumbLabel) {
+                        m_chatThumbLabel->setPixmap(pix.scaled(48, 48, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+                    }
+                    if (m_chatThumbTexto) {
+                        m_chatThumbTexto->setText(QString("Circuito capturado (%1x%2 px)").arg(rect.width()).arg(rect.height()));
+                    }
+                    if (m_chatPreviewWidget) {
+                        m_chatPreviewWidget->setVisible(true);
+                    }
+                    onTogglePainelLateral(true);
+                    m_tabWidget->setCurrentIndex(2); // Aba do Chat IA
+                    if (m_chatInput) {
+                        m_chatInput->setFocus();
+                    }
+                    appendLog("Circuito capturado com sucesso e anexado ao Assistente IA.", "success");
                 } else {
-                    appendLog("Região capturada. Clique em 'Traduzir Seleção'.");
+                    m_textoOcrAtual = "BASE64:" + bytes.toBase64();
+                    m_btnTraduzir->setEnabled(true);
+
+                    if (m_chkTraducaoAuto->isChecked()) {
+                        onTraduzirDireto();
+                    } else {
+                        appendLog("Região capturada. Clique em 'Traduzir Seleção'.");
+                    }
                 }
             }
+            m_tipoCaptura = ModoCapturaRubberBand::Nenhum;
             return true;
         }
         break;
@@ -1288,19 +1490,30 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 // Navegação de Páginas e Zoom
 // ═════════════════════════════════════════════════════════════════════════════
 
-void MainWindow::irParaPagina(int pagina)
+void MainWindow::forcarNavegacaoPagina(int pagina)
 {
     if (!m_pdfDoc || m_pdfDoc->pageCount() == 0) return;
     const int total = m_pdfDoc->pageCount();
     pagina = qBound(0, pagina, total - 1);
-    m_paginaAtual = pagina;
 
     m_bloquearSyncPagina = true;
-    m_pdfView->pageNavigator()->jump(m_paginaAtual, {}, 0);
+    m_paginaAtual = pagina;
+
+    // A técnica do salto intermediário força o QPdfPageNavigator a recalcular
+    // o scrollbar interno mesmo quando zoom ou setPageMode invalidaram o layout
+    if (total > 1) {
+        const int dummy = (pagina == 0 ? 1 : 0);
+        m_pdfView->pageNavigator()->jump(dummy, {}, 0);
+    }
+    m_pdfView->pageNavigator()->jump(pagina, {}, 0);
 
     if (m_modoVis == ModoVisualizacao::DuasPaginas) {
-        if (m_paginaAtual + 1 < total) {
-            m_pdfView2->pageNavigator()->jump(m_paginaAtual + 1, {}, 0);
+        if (pagina + 1 < total) {
+            if (total > 2) {
+                const int dummy2 = (pagina + 1 == 0 ? 1 : 0);
+                m_pdfView2->pageNavigator()->jump(dummy2, {}, 0);
+            }
+            m_pdfView2->pageNavigator()->jump(pagina + 1, {}, 0);
             m_pdfView2->setVisible(true);
         } else {
             m_pdfView2->setVisible(false);
@@ -1310,13 +1523,24 @@ void MainWindow::irParaPagina(int pagina)
     }
 
     atualizarInfoNavegacao();
-    m_bloquearSyncPagina = false;
+
+    // Mantém o bloqueio ativo durante o ciclo de layout do Qt para evitar eventos espúrios
+    QTimer::singleShot(150, this, [this, pagina]() {
+        if (m_paginaAtual == pagina) {
+            m_bloquearSyncPagina = false;
+        }
+    });
+}
+
+void MainWindow::irParaPagina(int pagina)
+{
+    forcarNavegacaoPagina(pagina);
 }
 
 void MainWindow::setModoVisualizacao(ModoVisualizacao modo)
 {
-    m_modoVis = modo;
     const int pagAlvo = m_paginaAtual;
+    m_modoVis = modo;
     m_bloquearSyncPagina = true;
 
     m_btnModo1Pag->setChecked(modo == ModoVisualizacao::UmaPagina);
@@ -1337,16 +1561,9 @@ void MainWindow::setModoVisualizacao(ModoVisualizacao modo)
         break;
     }
 
-    // Aguarda o ciclo de renderização do QPdfView recalcular as páginas antes de posicionar na página alvo
+    forcarNavegacaoPagina(pagAlvo);
     QTimer::singleShot(60, this, [this, pagAlvo]() {
-        if (m_modoVis == ModoVisualizacao::Continuo) {
-            m_pdfView->pageNavigator()->jump(pagAlvo, {}, 0);
-        } else {
-            irParaPagina(pagAlvo);
-        }
-        m_paginaAtual = pagAlvo;
-        atualizarInfoNavegacao();
-        m_bloquearSyncPagina = false;
+        forcarNavegacaoPagina(pagAlvo);
     });
 }
 
@@ -1397,15 +1614,9 @@ void MainWindow::aplicarZoom(qreal fator)
     }
     atualizarLabelZoom();
 
-    QTimer::singleShot(40, this, [this, pagAlvo]() {
-        if (m_modoVis == ModoVisualizacao::Continuo) {
-            m_pdfView->pageNavigator()->jump(pagAlvo, {}, 0);
-        } else {
-            irParaPagina(pagAlvo);
-        }
-        m_paginaAtual = pagAlvo;
-        atualizarInfoNavegacao();
-        m_bloquearSyncPagina = false;
+    forcarNavegacaoPagina(pagAlvo);
+    QTimer::singleShot(60, this, [this, pagAlvo]() {
+        forcarNavegacaoPagina(pagAlvo);
     });
 }
 
@@ -1427,15 +1638,9 @@ void MainWindow::onAjustarLargura()
     if (m_pdfView2->isVisible()) m_pdfView2->setZoomMode(QPdfView::ZoomMode::FitToWidth);
     atualizarLabelZoom();
 
-    QTimer::singleShot(40, this, [this, pagAlvo]() {
-        if (m_modoVis == ModoVisualizacao::Continuo) {
-            m_pdfView->pageNavigator()->jump(pagAlvo, {}, 0);
-        } else {
-            irParaPagina(pagAlvo);
-        }
-        m_paginaAtual = pagAlvo;
-        atualizarInfoNavegacao();
-        m_bloquearSyncPagina = false;
+    forcarNavegacaoPagina(pagAlvo);
+    QTimer::singleShot(60, this, [this, pagAlvo]() {
+        forcarNavegacaoPagina(pagAlvo);
     });
 }
 
@@ -1448,15 +1653,9 @@ void MainWindow::onAjustarPagina()
     if (m_pdfView2->isVisible()) m_pdfView2->setZoomMode(QPdfView::ZoomMode::FitInView);
     atualizarLabelZoom();
 
-    QTimer::singleShot(40, this, [this, pagAlvo]() {
-        if (m_modoVis == ModoVisualizacao::Continuo) {
-            m_pdfView->pageNavigator()->jump(pagAlvo, {}, 0);
-        } else {
-            irParaPagina(pagAlvo);
-        }
-        m_paginaAtual = pagAlvo;
-        atualizarInfoNavegacao();
-        m_bloquearSyncPagina = false;
+    forcarNavegacaoPagina(pagAlvo);
+    QTimer::singleShot(60, this, [this, pagAlvo]() {
+        forcarNavegacaoPagina(pagAlvo);
     });
 }
 
@@ -1542,3 +1741,246 @@ void MainWindow::setButtonBusy(QPushButton *btn, bool busy)
     if (!btn) return;
     btn->setEnabled(!busy);
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Assistente Técnico / Chat IA Multimodal (Circuitos, Dúvidas e API)
+// ═════════════════════════════════════════════════════════════════════════════
+
+void MainWindow::onCapturarCircuitoChat()
+{
+    m_tipoCaptura = ModoCapturaRubberBand::CircuitoChat;
+    m_modoCaptura = true;
+    m_pdfView->viewport()->setCursor(Qt::CrossCursor);
+    m_pdfView2->viewport()->setCursor(Qt::CrossCursor);
+    appendLog("Modo circuito ativado: selecione o circuito ou esquema no leitor PDF com o mouse.", "info");
+}
+
+void MainWindow::onAnexarImagemChat()
+{
+    const QString arq = QFileDialog::getOpenFileName(
+        this, "Selecionar Imagem do Circuito", QString(), "Imagens (*.png *.jpg *.jpeg *.webp *.bmp)");
+    if (arq.isEmpty()) return;
+
+    QFile file(arq);
+    if (file.open(QIODevice::ReadOnly)) {
+        const QByteArray bytes = file.readAll();
+        m_chatImagemBase64 = QString::fromLatin1(bytes.toBase64());
+        QPixmap pix;
+        pix.loadFromData(bytes);
+        if (m_chatThumbLabel) {
+            m_chatThumbLabel->setPixmap(pix.scaled(48, 48, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        }
+        if (m_chatThumbTexto) {
+            m_chatThumbTexto->setText(QFileInfo(arq).fileName());
+        }
+        if (m_chatPreviewWidget) {
+            m_chatPreviewWidget->setVisible(true);
+        }
+        appendLog("Imagem anexada: " + QFileInfo(arq).fileName(), "success");
+    }
+}
+
+void MainWindow::onRemoverImagemChat()
+{
+    m_chatImagemBase64.clear();
+    if (m_chatPreviewWidget) {
+        m_chatPreviewWidget->setVisible(false);
+    }
+    if (m_chatThumbLabel) {
+        m_chatThumbLabel->clear();
+    }
+}
+
+void MainWindow::onColarTrechoChat()
+{
+    QString trecho = m_textoOriginalEn;
+    if (trecho.isEmpty()) {
+        trecho = m_textoTraduzidoPt;
+    }
+    if (trecho.isEmpty()) {
+        appendLog("Nenhum trecho de texto capturado ainda.", "warning");
+        return;
+    }
+
+    if (m_chatInput) {
+        QString atual = m_chatInput->toPlainText().trimmed();
+        if (!atual.isEmpty()) atual += "\n\n";
+        atual += QString("Explicar este trecho: \"%1\"").arg(trecho);
+        m_chatInput->setPlainText(atual);
+        m_chatInput->setFocus();
+    }
+}
+
+void MainWindow::onLimparChat()
+{
+    m_chatHistoricoJson = QJsonArray();
+    m_chatHistorico->setHtml(
+        "<div style='color: #94a3b8; font-size: 13px; line-height: 1.5;'>"
+        "<b style='color: #60a5fa;'>💬 Conversa reiniciada</b><br>"
+        "O histórico foi limpo. Faça uma nova pergunta ou anexe um circuito."
+        "</div>"
+    );
+    appendLog("Histórico do Assistente IA limpo.", "info");
+}
+
+void MainWindow::onEnviarChat()
+{
+    const QString texto = m_chatInput ? m_chatInput->toPlainText().trimmed() : QString();
+    if (texto.isEmpty() && m_chatImagemBase64.isEmpty()) {
+        return;
+    }
+
+    // Adiciona pergunta do usuário na UI
+    QString userHtml = "<div style='margin-bottom: 12px; margin-top: 6px;'>"
+                       "<div style='font-size: 11px; font-weight: 600; color: #38bdf8; margin-bottom: 2px;'>Você</div>"
+                       "<div style='background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 8px 10px; color: #f1f5f9; font-size: 13px; line-height: 1.4;'>";
+
+    if (!m_chatImagemBase64.isEmpty()) {
+        userHtml += "<div style='color: #93c5fd; font-size: 11px; margin-bottom: 4px;'>📷 [Imagem / Circuito Anexado]</div>";
+    }
+    if (!texto.isEmpty()) {
+        userHtml += texto.toHtmlEscaped().replace("\n", "<br>");
+    }
+    userHtml += "</div></div>";
+
+    m_chatHistorico->append(userHtml);
+
+    // Salva no histórico JSON
+    QJsonObject userMsg;
+    userMsg["role"] = "user";
+    userMsg["content"] = texto;
+    m_chatHistoricoJson.append(userMsg);
+
+    const QString imgB64 = m_chatImagemBase64;
+    onRemoverImagemChat();
+    m_chatInput->clear();
+
+    setButtonBusy(m_btnChatEnviar, true);
+    m_lblStatus->setText("Consultando Assistente IA...");
+
+    m_net->enviarMensagemChat(texto, imgB64, m_chatHistoricoJson, m_iaProvedor, m_iaApiKey, m_iaModelo);
+}
+
+void MainWindow::onChatRespostaResultado(const QString &resposta, const QString &provedor, const QString &modelo)
+{
+    setButtonBusy(m_btnChatEnviar, false);
+    m_lblStatus->setText("Pronto");
+
+    // Salva no histórico JSON
+    QJsonObject botMsg;
+    botMsg["role"] = "assistant";
+    botMsg["content"] = resposta;
+    m_chatHistoricoJson.append(botMsg);
+
+    // Formata resposta em HTML
+    QString formatted = resposta.toHtmlEscaped();
+    formatted.replace("\n\n", "<br><br>");
+    formatted.replace("\n", "<br>");
+
+    QString botHtml = QString(
+        "<div style='margin-bottom: 16px; margin-top: 6px;'>"
+        "<div style='font-size: 11px; font-weight: 600; color: #a78bfa; margin-bottom: 2px;'>Assistente Técnico (%1: %2)</div>"
+        "<div style='background-color: #171b24; border: 1px solid #282f3d; border-left: 3px solid #8b5cf6; border-radius: 8px; padding: 10px 12px; color: #e2e8f0; font-size: 13px; line-height: 1.5;'>%3</div>"
+        "</div>"
+    ).arg(provedor.toUpper(), modelo, formatted);
+
+    m_chatHistorico->append(botHtml);
+    m_chatHistorico->verticalScrollBar()->setValue(m_chatHistorico->verticalScrollBar()->maximum());
+    appendLog(QString("Resposta do Assistente IA recebida (%1).").arg(provedor), "success");
+}
+
+void MainWindow::onConfigurarIA()
+{
+    QDialog dlg(this);
+    dlg.setWindowTitle("Configuração de IA e Chaves de API");
+    dlg.setMinimumWidth(440);
+    dlg.setStyleSheet(
+        "QDialog { background-color: #131418; color: #e2e8f0; }"
+        "QLabel { color: #cbd5e1; font-size: 12px; }"
+        "QLineEdit, QComboBox {"
+        "  background-color: #1c1e24; border: 1px solid #333846; border-radius: 6px; padding: 6px 8px; color: #f1f5f9; font-size: 12px;"
+        "}"
+        "QLineEdit:focus, QComboBox:focus { border-color: #3b82f6; }"
+        "QPushButton { border-radius: 6px; padding: 6px 14px; font-weight: 500; font-size: 12px; }"
+    );
+
+    auto *layout = new QVBoxLayout(&dlg);
+    layout->setSpacing(12);
+
+    auto *form = new QFormLayout();
+    form->setSpacing(10);
+
+    auto *comboProvedor = new QComboBox(&dlg);
+    comboProvedor->addItem("Google Gemini (Recomendado: Rápido & Visão de Circuitos)", "gemini");
+    comboProvedor->addItem("Ollama (Local / Offline)", "ollama");
+    comboProvedor->setCurrentIndex(m_iaProvedor == "ollama" ? 1 : 0);
+    form->addRow("Provedor:", comboProvedor);
+
+    auto *txtApiKey = new QLineEdit(&dlg);
+    txtApiKey->setEchoMode(QLineEdit::Password);
+    txtApiKey->setText(m_iaApiKey);
+    txtApiKey->setPlaceholderText("Cole sua API Key do Google Gemini aqui");
+
+    auto *chkMostrarKey = new QCheckBox("Mostrar chave", &dlg);
+    chkMostrarKey->setStyleSheet("color: #94a3b8; font-size: 11px;");
+    connect(chkMostrarKey, &QCheckBox::toggled, &dlg, [txtApiKey](bool checked) {
+        txtApiKey->setEchoMode(checked ? QLineEdit::Normal : QLineEdit::Password);
+    });
+
+    auto *layoutKey = new QVBoxLayout();
+    layoutKey->addWidget(txtApiKey);
+    layoutKey->addWidget(chkMostrarKey);
+
+    auto *lblLinkKey = new QLabel("<a href='https://aistudio.google.com/app/apikey' style='color:#60a5fa; text-decoration:none;'>🔗 Obter chave gratuita no Google AI Studio (ai.google.dev)</a>", &dlg);
+    lblLinkKey->setOpenExternalLinks(true);
+    layoutKey->addWidget(lblLinkKey);
+
+    form->addRow("Chave Gemini:", layoutKey);
+
+    auto *comboModelo = new QComboBox(&dlg);
+    comboModelo->addItem("gemini-2.5-flash (Mais Recente & Inteligente)", "gemini-2.5-flash");
+    comboModelo->addItem("gemini-1.5-flash (Ultrarrápido)", "gemini-1.5-flash");
+    comboModelo->addItem("gemini-2.0-flash", "gemini-2.0-flash");
+    const int idxMod = comboModelo->findData(m_iaModelo);
+    if (idxMod >= 0) comboModelo->setCurrentIndex(idxMod);
+    form->addRow("Modelo:", comboModelo);
+
+    auto *txtOllamaModelo = new QLineEdit(&dlg);
+    txtOllamaModelo->setText(m_iaProvedor == "ollama" ? m_iaModelo : "llama3");
+    txtOllamaModelo->setPlaceholderText("ex: llama3, llama3.2-vision, mistral");
+    form->addRow("Modelo Ollama:", txtOllamaModelo);
+
+    layout->addLayout(form);
+
+    auto *btnBox = new QHBoxLayout();
+    btnBox->addStretch();
+    auto *btnCancelar = new QPushButton("Cancelar", &dlg);
+    btnCancelar->setStyleSheet("background-color: #272a33; color: #94a3b8; border: 1px solid #3e4452;");
+    connect(btnCancelar, &QPushButton::clicked, &dlg, &QDialog::reject);
+    btnBox->addWidget(btnCancelar);
+
+    auto *btnSalvar = new QPushButton("Salvar Configurações", &dlg);
+    btnSalvar->setStyleSheet("background-color: #2563eb; color: #ffffff; border: none; font-weight: 600;");
+    connect(btnSalvar, &QPushButton::clicked, &dlg, &QDialog::accept);
+    btnBox->addWidget(btnSalvar);
+
+    layout->addLayout(btnBox);
+
+    if (dlg.exec() == QDialog::Accepted) {
+        m_iaProvedor = comboProvedor->currentData().toString();
+        m_iaApiKey   = txtApiKey->text().trimmed();
+        if (m_iaProvedor == "gemini") {
+            m_iaModelo = comboModelo->currentData().toString();
+        } else {
+            m_iaModelo = txtOllamaModelo->text().trimmed();
+            if (m_iaModelo.isEmpty()) m_iaModelo = "llama3";
+        }
+        salvarConfiguracoes();
+
+        if (m_lblModeloAtivoChat) {
+            m_lblModeloAtivoChat->setText(QString("IA: %1 (%2)").arg(m_iaProvedor.toUpper(), m_iaModelo));
+        }
+        appendLog("Configurações de IA salvas com sucesso.", "success");
+    }
+}
+

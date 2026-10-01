@@ -333,3 +333,56 @@ void NetworkManager::avaliarPronuncia(const QString &textoEsperado, const QStrin
         emit avaliacaoPronunciaResultado(nota, feedback, falado, ausentes);
     });
 }
+
+void NetworkManager::enviarMensagemChat(const QString &mensagem, 
+                                        const QString &imagemBase64, 
+                                        const QJsonArray &historico, 
+                                        const QString &provedor, 
+                                        const QString &apiKey, 
+                                        const QString &modelo)
+{
+    const QString endpoint = "/chat_ia";
+    emit requisicaoIniciada(endpoint);
+
+    QJsonObject body;
+    body["mensagem"] = mensagem;
+    if (!imagemBase64.isEmpty()) {
+        body["imagem_base64"] = imagemBase64;
+    }
+    if (!historico.isEmpty()) {
+        body["historico"] = historico;
+    }
+    body["provedor"] = provedor;
+    if (!apiKey.isEmpty()) {
+        body["api_key"] = apiKey;
+    }
+    if (!modelo.isEmpty()) {
+        body["modelo"] = modelo;
+    }
+
+    const QByteArray jsonBody = QJsonDocument(body).toJson(QJsonDocument::Compact);
+    auto *reply = postJson(endpoint, jsonBody);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, endpoint]() {
+        emit requisicaoConcluida(endpoint);
+        reply->deleteLater();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            const QByteArray errResp = reply->readAll();
+            QString detalhe = extrairCampoString(errResp, "detail");
+            if (detalhe.isEmpty()) {
+                detalhe = reply->errorString();
+            }
+            emit erroRequisicao(endpoint, QStringLiteral("Erro no Assistente IA: %1").arg(detalhe));
+            return;
+        }
+
+        const QByteArray resp = reply->readAll();
+        const QString resposta = extrairCampoString(resp, "resposta");
+        const QString prov     = extrairCampoString(resp, "provedor_usado");
+        const QString mod      = extrairCampoString(resp, "modelo_usado");
+
+        emit chatRespostaResultado(resposta, prov, mod);
+    });
+}
+

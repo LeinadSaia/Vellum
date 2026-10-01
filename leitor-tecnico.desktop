@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Leitor Técnico & Tradutor
+GenericName=Leitor de PDF e Tradutor
+Comment=Leitura de documentos em inglês com tradução técnica via IA local
+Exec="/home/thnsm/Downloads/ENSINADOR DE INGLESIS/iniciar_tudo.sh"
+Path=/home/thnsm/Downloads/ENSINADOR DE INGLESIS
+Icon=accessories-dictionary
+Terminal=false
+Categories=Office;Education;Viewer;
+Keywords=pdf;leitor;tradutor;ingles;ollama;
+StartupNotify=true
+StartupWMClass=EnsinadorDeIngles

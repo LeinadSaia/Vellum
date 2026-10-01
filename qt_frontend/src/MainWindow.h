@@ -66,9 +66,10 @@ private slots:
 
     // ── Tutor de Pronúncia & Voz ──────────────────────────────────────────
     void onOuvirPronuncia();
+    void onPararAudio();
     void onGravarVozTutor();
     void onFalaIniciada(const QString &voz);
-    void onAvaliacaoPronunciaResultado(int nota, const QString &feedback, const QStringList &palavrasAusentes);
+    void onAvaliacaoPronunciaResultado(int nota, const QString &feedback, const QString &textoFalado, const QStringList &palavrasAusentes);
 
     // ── Navegação e Modos de Visualização ─────────────────────────────────
     void onPaginaAnterior();
@@ -124,12 +125,12 @@ private:
     void setButtonBusy(QPushButton *btn, bool busy);
 
     // ── Estado interno ────────────────────────────────────────────────────
-    bool             m_modoCaptura   = false;
-    bool             m_gravando      = false;
-    bool             m_panAtivo      = false;
-    bool             m_ajustandoZoom = false;
-    ModoVisualizacao m_modoVis       = ModoVisualizacao::UmaPagina;
-    int              m_paginaAtual   = 0;
+    bool             m_modoCaptura        = false;
+    bool             m_gravando           = false;
+    bool             m_panAtivo           = false;
+    bool             m_bloquearSyncPagina = false;
+    ModoVisualizacao m_modoVis            = ModoVisualizacao::UmaPagina;
+    int              m_paginaAtual        = 0;
 
     QString          m_textoOcrAtual;
     QString          m_textoOriginalEn;
@@ -184,7 +185,10 @@ private:
 
     // ── Aba 2: Tutor & Pronúncia ──────────────────────────────────────────
     QComboBox       *m_comboVoz          = nullptr;
+    QComboBox       *m_comboVelocidade   = nullptr;
+    QComboBox       *m_comboNivelTutor   = nullptr;
     QPushButton     *m_btnOuvir          = nullptr;
+    QPushButton     *m_btnPararAudio     = nullptr;
     QPushButton     *m_btnGravar         = nullptr;
     QProgressBar    *m_barAcuracia       = nullptr;
     QLabel          *m_lblAcuracia       = nullptr;

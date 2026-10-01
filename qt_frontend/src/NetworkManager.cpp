@@ -301,14 +301,15 @@ void NetworkManager::pararAudio()
     connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
 }
 
-void NetworkManager::avaliarPronuncia(const QString &textoEsperado, const QString &textoFalado)
+void NetworkManager::avaliarPronuncia(const QString &textoEsperado, const QString &textoFalado, const QString &nivel)
 {
     const QString endpoint = "/avaliar_pronuncia";
     emit requisicaoIniciada(endpoint);
 
     QJsonObject body;
     body["texto_esperado"] = textoEsperado;
-    body["texto_falado"] = textoFalado;
+    body["texto_falado"]   = textoFalado;
+    body["nivel"]          = nivel;
     const QByteArray jsonBody = QJsonDocument(body).toJson(QJsonDocument::Compact);
 
     auto *reply = postJson(endpoint, jsonBody);
@@ -326,8 +327,9 @@ void NetworkManager::avaliarPronuncia(const QString &textoEsperado, const QStrin
         const QByteArray resp = reply->readAll();
         const int nota = extrairCampoInt(resp, "nota", 0);
         const QString feedback = extrairCampoString(resp, "feedback");
+        const QString falado = extrairCampoString(resp, "texto_falado");
         const QStringList ausentes = extrairCampoListaString(resp, "palavras_ausentes");
 
-        emit avaliacaoPronunciaResultado(nota, feedback, ausentes);
+        emit avaliacaoPronunciaResultado(nota, feedback, falado, ausentes);
     });
 }

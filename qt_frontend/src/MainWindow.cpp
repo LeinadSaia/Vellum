@@ -25,6 +25,7 @@
 #include <QKeySequence>
 #include <QSettings>
 #include <QCloseEvent>
+#include <QTimer>
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Construtor e Inicialização
@@ -302,18 +303,50 @@ QWidget* MainWindow::criarAbaTutor()
     layout->setContentsMargins(4, 8, 4, 4);
     layout->setSpacing(8);
 
-    auto *lblVoz = new QLabel("Voz e Sotaque do Tutor:", aba);
-    lblVoz->setObjectName("lblSecao");
-    layout->addWidget(lblVoz);
+    auto *layoutVozVel = new QHBoxLayout();
+    layoutVozVel->setSpacing(6);
 
+    auto *boxVoz = new QVBoxLayout();
+    auto *lblVoz = new QLabel("Voz do Tutor:", aba);
+    lblVoz->setObjectName("lblSecao");
     m_comboVoz = new QComboBox(aba);
     m_comboVoz->setObjectName("comboVoz");
-    m_comboVoz->addItem("Inglês (EUA) - Jenny (Feminina)", "en-US-JennyNeural");
-    m_comboVoz->addItem("Inglês (EUA) - Guy (Masculina)", "en-US-GuyNeural");
-    m_comboVoz->addItem("Inglês (UK) - Sonia (Feminina)", "en-GB-SoniaNeural");
-    m_comboVoz->addItem("Inglês (UK) - Ryan (Masculina)", "en-GB-RyanNeural");
-    m_comboVoz->addItem("Inglês (AU) - Natasha (Feminina)", "en-AU-NatashaNeural");
-    layout->addWidget(m_comboVoz);
+    m_comboVoz->addItem("US Jenny (Feminina)", "en-US-JennyNeural");
+    m_comboVoz->addItem("US Guy (Masculina)", "en-US-GuyNeural");
+    m_comboVoz->addItem("UK Sonia (Feminina)", "en-GB-SoniaNeural");
+    m_comboVoz->addItem("UK Ryan (Masculina)", "en-GB-RyanNeural");
+    m_comboVoz->addItem("AU Natasha (Feminina)", "en-AU-NatashaNeural");
+    boxVoz->addWidget(lblVoz);
+    boxVoz->addWidget(m_comboVoz);
+
+    auto *boxVel = new QVBoxLayout();
+    auto *lblVel = new QLabel("Velocidade:", aba);
+    lblVel->setObjectName("lblSecao");
+    m_comboVelocidade = new QComboBox(aba);
+    m_comboVelocidade->setObjectName("comboVelocidade");
+    m_comboVelocidade->addItem("0.75x (Lenta)", "-25%");
+    m_comboVelocidade->addItem("1.0x (Normal)", "+0%");
+    m_comboVelocidade->addItem("1.25x (Rápida)", "+25%");
+    m_comboVelocidade->addItem("1.5x (Avançada)", "+50%");
+    m_comboVelocidade->setCurrentIndex(1);
+    boxVel->addWidget(lblVel);
+    boxVel->addWidget(m_comboVelocidade);
+
+    layoutVozVel->addLayout(boxVoz, 65);
+    layoutVozVel->addLayout(boxVel, 35);
+    layout->addLayout(layoutVozVel);
+
+    auto *lblNivel = new QLabel("Nível de Exigência do Tutor:", aba);
+    lblNivel->setObjectName("lblSecao");
+    layout->addWidget(lblNivel);
+
+    m_comboNivelTutor = new QComboBox(aba);
+    m_comboNivelTutor->setObjectName("comboNivelTutor");
+    m_comboNivelTutor->addItem("Iniciante (Flexível & Encorajador)", "iniciante");
+    m_comboNivelTutor->addItem("Intermediário (Equilibrado)", "intermediario");
+    m_comboNivelTutor->addItem("Avançado (Exigente / Rigor Técnico)", "avancado");
+    m_comboNivelTutor->setCurrentIndex(1);
+    layout->addWidget(m_comboNivelTutor);
 
     auto *layoutBotoes = new QHBoxLayout();
     layoutBotoes->setSpacing(6);
@@ -322,6 +355,10 @@ QWidget* MainWindow::criarAbaTutor()
     m_btnOuvir->setObjectName("btnSecundario");
     m_btnOuvir->setEnabled(false);
     layoutBotoes->addWidget(m_btnOuvir);
+
+    m_btnPararAudio = new QPushButton("Parar Fala", aba);
+    m_btnPararAudio->setObjectName("btnSecundario");
+    layoutBotoes->addWidget(m_btnPararAudio);
 
     m_btnGravar = new QPushButton("Gravar Minha Voz", aba);
     m_btnGravar->setObjectName("btnGravar");
@@ -804,8 +841,9 @@ void MainWindow::connectSignals()
     connect(m_btnCopiarTraducao, &QPushButton::clicked, this, &MainWindow::onCopiarTraducao);
 
     // Tutor e Áudio
-    connect(m_btnOuvir,  &QPushButton::clicked, this, &MainWindow::onOuvirPronuncia);
-    connect(m_btnGravar, &QPushButton::clicked, this, &MainWindow::onGravarVozTutor);
+    connect(m_btnOuvir,      &QPushButton::clicked, this, &MainWindow::onOuvirPronuncia);
+    connect(m_btnPararAudio, &QPushButton::clicked, this, &MainWindow::onPararAudio);
+    connect(m_btnGravar,     &QPushButton::clicked, this, &MainWindow::onGravarVozTutor);
 
     // Layout
     connect(m_btnSalvarLayout,    &QPushButton::clicked, this, &MainWindow::onSalvarLayout);
@@ -850,7 +888,7 @@ void MainWindow::connectSignals()
 
     connect(m_pdfView->pageNavigator(), &QPdfPageNavigator::currentPageChanged,
             this, [this](int pag) {
-        if (!m_ajustandoZoom && m_modoVis == ModoVisualizacao::Continuo) {
+        if (!m_bloquearSyncPagina && m_modoVis == ModoVisualizacao::Continuo) {
             m_paginaAtual = pag;
             atualizarInfoNavegacao();
         }
@@ -881,6 +919,16 @@ void MainWindow::carregarConfiguracoes()
     if (vozIndex >= 0 && vozIndex < m_comboVoz->count()) {
         m_comboVoz->setCurrentIndex(vozIndex);
     }
+
+    const int velIndex = settings.value("velIndex", 1).toInt();
+    if (velIndex >= 0 && velIndex < m_comboVelocidade->count()) {
+        m_comboVelocidade->setCurrentIndex(velIndex);
+    }
+
+    const int nivelIndex = settings.value("nivelIndex", 1).toInt();
+    if (nivelIndex >= 0 && nivelIndex < m_comboNivelTutor->count()) {
+        m_comboNivelTutor->setCurrentIndex(nivelIndex);
+    }
 }
 
 void MainWindow::salvarConfiguracoes()
@@ -891,6 +939,8 @@ void MainWindow::salvarConfiguracoes()
     settings.setValue("painelVisivel", m_painelDir->isVisible());
     settings.setValue("abaAtual", m_tabWidget->currentIndex());
     settings.setValue("vozIndex", m_comboVoz->currentIndex());
+    settings.setValue("velIndex", m_comboVelocidade->currentIndex());
+    settings.setValue("nivelIndex", m_comboNivelTutor->currentIndex());
 }
 
 void MainWindow::onSalvarLayout()
@@ -1066,8 +1116,15 @@ void MainWindow::onOuvirPronuncia()
     }
 
     const QString voz = m_comboVoz->currentData().toString();
-    appendLog(QString("Reproduzindo pronúncia neural com voz '%1'...").arg(voz), "info");
-    m_net->falarTexto(texto, voz);
+    const QString vel = m_comboVelocidade->currentData().toString();
+    appendLog(QString("Reproduzindo pronúncia neural (%1, velocidade %2)...").arg(voz, m_comboVelocidade->currentText()), "info");
+    m_net->falarTexto(texto, voz, vel);
+}
+
+void MainWindow::onPararAudio()
+{
+    m_net->pararAudio();
+    appendLog("Reprodução de áudio interrompida pelo usuário.", "info");
 }
 
 void MainWindow::onFalaIniciada(const QString &voz)
@@ -1105,32 +1162,39 @@ void MainWindow::onTranscricaoResultado(const QString &texto)
 {
     appendLog(QString("Whisper captou: \"%1\"").arg(texto), "info");
 
-    // Envia automaticamente para avaliação fonética do tutor
+    // Envia automaticamente para avaliação fonética do tutor com o nível de exigência escolhido
     if (!m_textoOriginalEn.isEmpty()) {
-        appendLog("Avaliando precisão da pronúncia com o tutor...", "info");
-        m_net->avaliarPronuncia(m_textoOriginalEn, texto);
+        const QString nivel = m_comboNivelTutor->currentData().toString();
+        appendLog(QString("Avaliando precisão da pronúncia (Nível: %1)...").arg(m_comboNivelTutor->currentText()), "info");
+        m_net->avaliarPronuncia(m_textoOriginalEn, texto, nivel);
     }
 }
 
-void MainWindow::onAvaliacaoPronunciaResultado(int nota, const QString &feedback, const QStringList &palavrasAusentes)
+void MainWindow::onAvaliacaoPronunciaResultado(int nota, const QString &feedback, const QString &textoFalado, const QStringList &palavrasAusentes)
 {
     m_barAcuracia->setValue(nota);
 
     QString html = QString(
-        "<div style='margin-bottom: 6px;'>"
+        "<div style='margin-bottom: 8px;'>"
         "<span style='color: #60a5fa; font-weight: 600; font-size: 13px;'>Nota de Correspondência: %1%</span>"
         "</div>"
-        "<div style='margin-bottom: 8px; color: #e5e7eb; font-size: 12px; line-height: 1.4;'>%2</div>"
-    ).arg(nota).arg(feedback.toHtmlEscaped());
+        "<div style='background-color: #1e222a; border-left: 3px solid #3b82f6; padding: 6px 8px; border-radius: 4px; margin-bottom: 8px;'>"
+        "<span style='color: #9ca3af; font-size: 10px; font-weight: 600; text-transform: uppercase;'>O que o Tutor ouviu da sua fala:</span><br>"
+        "<span style='color: #e5e7eb; font-size: 12px; font-weight: 500;'>\"%2\"</span>"
+        "</div>"
+        "<div style='margin-bottom: 8px; color: #d1d5db; font-size: 12px; line-height: 1.4;'>"
+        "<b>Dica do Tutor:</b><br>%3"
+        "</div>"
+    ).arg(nota).arg(textoFalado.toHtmlEscaped()).arg(feedback.toHtmlEscaped());
 
     if (!palavrasAusentes.isEmpty()) {
-        html += "<div style='color: #fbbf24; font-size: 11px; margin-top: 6px;'>"
-                "<b>Atenção nestes termos:</b> " + palavrasAusentes.join(", ").toHtmlEscaped() +
+        html += "<div style='background-color: #26201a; border-left: 3px solid #f59e0b; padding: 5px 8px; border-radius: 4px; color: #fbbf24; font-size: 11px; margin-top: 6px;'>"
+                "<b>Atenção nestes termos:</b><br>" + palavrasAusentes.join(", ").toHtmlEscaped() +
                 "</div>";
     }
 
     m_txtFeedbackTutor->setHtml(html);
-    appendLog(QString("Avaliação do tutor concluída: %1% de acurácia.").arg(nota), "success");
+    appendLog(QString("Avaliação concluída: %1% de acurácia.").arg(nota), "success");
 }
 
 void MainWindow::onPerfilAlterado(int index)
@@ -1231,6 +1295,7 @@ void MainWindow::irParaPagina(int pagina)
     pagina = qBound(0, pagina, total - 1);
     m_paginaAtual = pagina;
 
+    m_bloquearSyncPagina = true;
     m_pdfView->pageNavigator()->jump(m_paginaAtual, {}, 0);
 
     if (m_modoVis == ModoVisualizacao::DuasPaginas) {
@@ -1245,11 +1310,14 @@ void MainWindow::irParaPagina(int pagina)
     }
 
     atualizarInfoNavegacao();
+    m_bloquearSyncPagina = false;
 }
 
 void MainWindow::setModoVisualizacao(ModoVisualizacao modo)
 {
     m_modoVis = modo;
+    const int pagAlvo = m_paginaAtual;
+    m_bloquearSyncPagina = true;
 
     m_btnModo1Pag->setChecked(modo == ModoVisualizacao::UmaPagina);
     m_btnModo2Pag->setChecked(modo == ModoVisualizacao::DuasPaginas);
@@ -1259,18 +1327,27 @@ void MainWindow::setModoVisualizacao(ModoVisualizacao modo)
     case ModoVisualizacao::UmaPagina:
         m_pdfView->setPageMode(QPdfView::PageMode::SinglePage);
         m_pdfView2->setVisible(false);
-        irParaPagina(m_paginaAtual);
         break;
     case ModoVisualizacao::DuasPaginas:
         m_pdfView->setPageMode(QPdfView::PageMode::SinglePage);
-        irParaPagina(m_paginaAtual);
         break;
     case ModoVisualizacao::Continuo:
         m_pdfView->setPageMode(QPdfView::PageMode::MultiPage);
         m_pdfView2->setVisible(false);
-        m_pdfView->pageNavigator()->jump(m_paginaAtual, {}, 0);
         break;
     }
+
+    // Aguarda o ciclo de renderização do QPdfView recalcular as páginas antes de posicionar na página alvo
+    QTimer::singleShot(60, this, [this, pagAlvo]() {
+        if (m_modoVis == ModoVisualizacao::Continuo) {
+            m_pdfView->pageNavigator()->jump(pagAlvo, {}, 0);
+        } else {
+            irParaPagina(pagAlvo);
+        }
+        m_paginaAtual = pagAlvo;
+        atualizarInfoNavegacao();
+        m_bloquearSyncPagina = false;
+    });
 }
 
 void MainWindow::onModo1PagClicado() { setModoVisualizacao(ModoVisualizacao::UmaPagina); }
@@ -1309,7 +1386,7 @@ void MainWindow::aplicarZoom(qreal fator)
 {
     fator = qBound(0.2, fator, 4.0);
     const int pagAlvo = m_paginaAtual;
-    m_ajustandoZoom = true;
+    m_bloquearSyncPagina = true;
 
     m_pdfView->setZoomMode(QPdfView::ZoomMode::Custom);
     m_pdfView->setZoomFactor(fator);
@@ -1318,15 +1395,18 @@ void MainWindow::aplicarZoom(qreal fator)
         m_pdfView2->setZoomMode(QPdfView::ZoomMode::Custom);
         m_pdfView2->setZoomFactor(fator);
     }
-
-    if (m_modoVis == ModoVisualizacao::Continuo) {
-        m_pdfView->pageNavigator()->jump(pagAlvo, {}, 0);
-    } else {
-        irParaPagina(pagAlvo);
-    }
-
     atualizarLabelZoom();
-    m_ajustandoZoom = false;
+
+    QTimer::singleShot(40, this, [this, pagAlvo]() {
+        if (m_modoVis == ModoVisualizacao::Continuo) {
+            m_pdfView->pageNavigator()->jump(pagAlvo, {}, 0);
+        } else {
+            irParaPagina(pagAlvo);
+        }
+        m_paginaAtual = pagAlvo;
+        atualizarInfoNavegacao();
+        m_bloquearSyncPagina = false;
+    });
 }
 
 void MainWindow::zoomDelta(qreal delta)
@@ -1341,37 +1421,43 @@ void MainWindow::onZoomReset() { aplicarZoom(1.0); }
 void MainWindow::onAjustarLargura()
 {
     const int pagAlvo = m_paginaAtual;
-    m_ajustandoZoom = true;
+    m_bloquearSyncPagina = true;
 
     m_pdfView->setZoomMode(QPdfView::ZoomMode::FitToWidth);
     if (m_pdfView2->isVisible()) m_pdfView2->setZoomMode(QPdfView::ZoomMode::FitToWidth);
-
-    if (m_modoVis == ModoVisualizacao::Continuo) {
-        m_pdfView->pageNavigator()->jump(pagAlvo, {}, 0);
-    } else {
-        irParaPagina(pagAlvo);
-    }
-
     atualizarLabelZoom();
-    m_ajustandoZoom = false;
+
+    QTimer::singleShot(40, this, [this, pagAlvo]() {
+        if (m_modoVis == ModoVisualizacao::Continuo) {
+            m_pdfView->pageNavigator()->jump(pagAlvo, {}, 0);
+        } else {
+            irParaPagina(pagAlvo);
+        }
+        m_paginaAtual = pagAlvo;
+        atualizarInfoNavegacao();
+        m_bloquearSyncPagina = false;
+    });
 }
 
 void MainWindow::onAjustarPagina()
 {
     const int pagAlvo = m_paginaAtual;
-    m_ajustandoZoom = true;
+    m_bloquearSyncPagina = true;
 
     m_pdfView->setZoomMode(QPdfView::ZoomMode::FitInView);
     if (m_pdfView2->isVisible()) m_pdfView2->setZoomMode(QPdfView::ZoomMode::FitInView);
-
-    if (m_modoVis == ModoVisualizacao::Continuo) {
-        m_pdfView->pageNavigator()->jump(pagAlvo, {}, 0);
-    } else {
-        irParaPagina(pagAlvo);
-    }
-
     atualizarLabelZoom();
-    m_ajustandoZoom = false;
+
+    QTimer::singleShot(40, this, [this, pagAlvo]() {
+        if (m_modoVis == ModoVisualizacao::Continuo) {
+            m_pdfView->pageNavigator()->jump(pagAlvo, {}, 0);
+        } else {
+            irParaPagina(pagAlvo);
+        }
+        m_paginaAtual = pagAlvo;
+        atualizarInfoNavegacao();
+        m_bloquearSyncPagina = false;
+    });
 }
 
 void MainWindow::atualizarLabelZoom()

@@ -53,8 +53,8 @@ public:
     /** POST /parar_audio */
     void pararAudio();
 
-    /** POST /avaliar_pronuncia (Tutor de fala) */
-    void avaliarPronuncia(const QString &textoEsperado, const QString &textoFalado);
+    /** POST /avaliar_pronuncia (Tutor de fala com nível) */
+    void avaliarPronuncia(const QString &textoEsperado, const QString &textoFalado, const QString &nivel = "intermediario");
 
 signals:
     void traducaoDiretaResultado(const QString &textoIngles, const QString &traducaoPortugues);
@@ -66,7 +66,7 @@ signals:
 
     /** TTS e Tutor */
     void falaIniciada(const QString &voz);
-    void avaliacaoPronunciaResultado(int nota, const QString &feedback, const QStringList &palavrasAusentes);
+    void avaliacaoPronunciaResultado(int nota, const QString &feedback, const QString &textoFalado, const QStringList &palavrasAusentes);
 
     void requisicaoIniciada(const QString &endpoint);
     void requisicaoConcluida(const QString &endpoint);

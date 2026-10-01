@@ -274,31 +274,44 @@ Texto com OCR:
     return resposta["response"].strip()
 
 
-def _avaliar_pronuncia_sync(texto_esperado: str, texto_falado: str) -> dict:
+def _avaliar_pronuncia_sync(texto_esperado: str, texto_falado: str, nivel: str = "intermediario") -> dict:
     """
     Compara o texto esperado do documento com a transcrição do Whisper.
-    Calcula acurácia objetiva e gera feedback de pronúncia via LLM.
+    Calcula acurácia objetiva e gera feedback de pronúncia via LLM considerando o nível de exigência.
     """
     palavras_esperadas = [w.lower().strip(".,!?;:\"'()[]") for w in texto_esperado.split() if w]
     palavras_faladas   = [w.lower().strip(".,!?;:\"'()[]") for w in texto_falado.split() if w]
 
     matcher = difflib.SequenceMatcher(None, palavras_esperadas, palavras_faladas)
-    similaridade = int(matcher.ratio() * 100)
+    ratio = matcher.ratio()
 
-    # Identifica palavras ausentes ou incorretas
+    # Ajuste de rigor por nível
+    if nivel == "iniciante":
+        # Tolerância generosa para iniciantes
+        similaridade = min(100, int(ratio * 125))
+        cobranca_prompt = "Nível do aluno: INICIANTE. Seja muito encorajador e acolhedor, parabenize os acertos e releve pequenos desvios de sotaque."
+    elif nivel == "avancado":
+        # Rigor alto: exige correspondência precisa
+        similaridade = int(ratio * 90)
+        cobranca_prompt = "Nível do aluno: AVANÇADO / EXIGENTE. Seja rigoroso, pontue com precisão trocas de fonemas, omissões de terminações verbais e ritmo."
+    else:
+        similaridade = int(ratio * 100)
+        cobranca_prompt = "Nível do aluno: INTERMEDIÁRIO. Seja equilibrado, aponte palavras com pronúncia truncada e elogie a fluidez."
+
     set_esperadas = set(palavras_esperadas)
     set_faladas = set(palavras_faladas)
     ausentes = list(set_esperadas - set_faladas)[:6]
 
-    prompt = f"""Você é um tutor amigável e técnico de pronúncia em língua inglesa.
-O aluno tentou ler em voz alta o seguinte texto em inglês:
-Texto original esperado: "{texto_esperado}"
+    prompt = f"""Você é um tutor de pronúncia em inglês para estudantes universitários de Engenharia.
+{cobranca_prompt}
+
+Texto original esperado do livro: "{texto_esperado}"
 O que o reconhecimento de voz captou da fala do aluno: "{texto_falado}"
 
 Forneça um feedback curto (2 a 3 frases) em português:
-1. Diga se a pronúncia foi clara ou onde houve divergência.
-2. Dê uma dica pontual de pronúncia ou fonética sobre palavras-chave que faltaram ou saíram diferentes.
-Seja direto, encorajador e construtivo. Não use notas numéricas no texto.
+1. Diga claramente como foi a clareza geral e o que o aluno acertou.
+2. Dê uma dica fonética sobre as palavras mais difíceis ou que saíram distorcidas.
+Retorne APENAS o feedback, sem notas numéricas no texto.
 """
     try:
         resp = ollama.generate(
@@ -313,6 +326,8 @@ Seja direto, encorajador e construtivo. Não use notas numéricas no texto.
     return {
         "nota": similaridade,
         "feedback": feedback,
+        "texto_esperado": texto_esperado,
+        "texto_falado": texto_falado,
         "palavras_ausentes": ausentes,
         "palavras_faladas": palavras_faladas,
     }
@@ -369,10 +384,13 @@ class FalarResponse(BaseModel):
 class AvaliarPronunciaRequest(BaseModel):
     texto_esperado: str
     texto_falado: str
+    nivel: Optional[str] = "intermediario"
 
 class AvaliarPronunciaResponse(BaseModel):
     nota: int
     feedback: str
+    texto_esperado: str
+    texto_falado: str
     palavras_ausentes: List[str]
     palavras_faladas: List[str]
 
@@ -509,7 +527,12 @@ async def avaliar_pronuncia(body: AvaliarPronunciaRequest):
         raise HTTPException(status_code=422, detail="Ambos os campos são obrigatórios.")
 
     try:
-        resultado = await asyncio.to_thread(_avaliar_pronuncia_sync, body.texto_esperado, body.texto_falado)
+        resultado = await asyncio.to_thread(
+            _avaliar_pronuncia_sync, 
+            body.texto_esperado, 
+            body.texto_falado, 
+            body.nivel or "intermediario"
+        )
     except Exception as exc:
         log.error(f"[/avaliar_pronuncia] Erro: {exc}")
         raise HTTPException(status_code=500, detail=f"Erro na avaliação de pronúncia: {exc}")

@@ -250,7 +250,7 @@ void MainWindow::setupUi()
 
     m_tabWidget->addTab(criarAbaTraducao(), "Tradução");
     m_tabWidget->addTab(criarAbaTutor(), "Tutor de Fala");
-    m_tabWidget->addTab(criarAbaChatIA(), "💬 Assistente IA");
+    m_tabWidget->addTab(criarAbaChatIA(), "Assistente IA");
     m_tabWidget->addTab(criarAbaConfiguracoes(), "Desempenho & Layout");
 
     layoutDir->addWidget(m_tabWidget);
@@ -426,12 +426,12 @@ QWidget* MainWindow::criarAbaChatIA()
     m_lblModeloAtivoChat->setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 500;");
     layoutHeader->addWidget(m_lblModeloAtivoChat, 1);
 
-    m_btnConfigurarIA = new QPushButton("⚙️ Chaves/API", aba);
+    m_btnConfigurarIA = new QPushButton("Configurar API", aba);
     m_btnConfigurarIA->setObjectName("btnSecundario");
-    m_btnConfigurarIA->setToolTip("Configurar Chave do Google Gemini ou Servidor Ollama");
+    m_btnConfigurarIA->setToolTip("Configurar chave da API Gemini ou ativar modo offline");
     layoutHeader->addWidget(m_btnConfigurarIA);
 
-    m_btnLimparChat = new QPushButton("🗑️ Limpar", aba);
+    m_btnLimparChat = new QPushButton("Limpar", aba);
     m_btnLimparChat->setObjectName("btnSecundario");
     m_btnLimparChat->setToolTip("Limpar histórico de conversa");
     layoutHeader->addWidget(m_btnLimparChat);
@@ -455,12 +455,12 @@ QWidget* MainWindow::criarAbaChatIA()
     );
     m_chatHistorico->setHtml(
         "<div style='color: #94a3b8; font-size: 13px; line-height: 1.5;'>"
-        "<b style='color: #60a5fa;'>💬 Assistente Técnico & Circuitos</b><br>"
-        "Tire dúvidas técnicas de engenharia sobre este livro, teoremas e esquemáticos elétricos.<br><br>"
-        "💡 <b>Como utilizar:</b><br>"
-        "• Clique em <b>✂️ Circuito do PDF</b> e selecione o esquemático com o mouse para a IA analisar a topologia, componentes e leis de nós/malhas.<br>"
-        "• Use <b>📄 Colar Trecho</b> para perguntar sobre o parágrafo lido.<br>"
-        "• Configure sua chave gratuita do Gemini em <b>⚙️ Chaves/API</b> acima."
+        "<b style='color: #60a5fa;'>Assistente Técnico</b><br>"
+        "Faça perguntas conceituais ou anexe circuitos para análise da IA.<br><br>"
+        "<b>Instruções:</b><br>"
+        "• <b>Capturar Circuito:</b> Selecione um esquema diretamente no PDF com o mouse.<br>"
+        "• <b>Colar Trecho:</b> Insere o texto selecionado na pergunta.<br>"
+        "• <b>Configurar API:</b> Insira sua chave Gemini ou ative o modo offline (Ollama)."
         "</div>"
     );
     layout->addWidget(m_chatHistorico, 1);
@@ -482,10 +482,10 @@ QWidget* MainWindow::criarAbaChatIA()
     m_chatThumbTexto->setStyleSheet("color: #e2e8f0; font-size: 11px;");
     previewLayout->addWidget(m_chatThumbTexto, 1);
 
-    m_btnRemoverThumb = new QPushButton("✖", m_chatPreviewWidget);
+    m_btnRemoverThumb = new QPushButton("X", m_chatPreviewWidget);
     m_btnRemoverThumb->setFixedSize(24, 24);
     m_btnRemoverThumb->setToolTip("Remover anexo");
-    m_btnRemoverThumb->setStyleSheet("background: transparent; color: #ef4444; font-size: 13px; border: none; font-weight: bold;");
+    m_btnRemoverThumb->setStyleSheet("background: transparent; color: #ef4444; font-size: 12px; border: none; font-weight: bold;");
     previewLayout->addWidget(m_btnRemoverThumb);
 
     m_chatPreviewWidget->setVisible(false);
@@ -495,17 +495,17 @@ QWidget* MainWindow::criarAbaChatIA()
     auto *layoutAcoes = new QHBoxLayout();
     layoutAcoes->setSpacing(6);
 
-    m_btnCapturarCircuito = new QPushButton("✂️ Circuito do PDF", aba);
+    m_btnCapturarCircuito = new QPushButton("Capturar Circuito", aba);
     m_btnCapturarCircuito->setObjectName("btnSecundario");
     m_btnCapturarCircuito->setToolTip("Selecione um circuito ou esquema no livro para a IA analisar");
     layoutAcoes->addWidget(m_btnCapturarCircuito);
 
-    m_btnAnexarImagem = new QPushButton("📎 Imagem...", aba);
+    m_btnAnexarImagem = new QPushButton("Anexar Imagem", aba);
     m_btnAnexarImagem->setObjectName("btnSecundario");
-    m_btnAnexarImagem->setToolTip("Anexar arquivo de imagem do seu computador");
+    m_btnAnexarImagem->setToolTip("Anexar arquivo de imagem do computador");
     layoutAcoes->addWidget(m_btnAnexarImagem);
 
-    m_btnColarTrecho = new QPushButton("📄 Colar Trecho", aba);
+    m_btnColarTrecho = new QPushButton("Colar Trecho", aba);
     m_btnColarTrecho->setObjectName("btnSecundario");
     m_btnColarTrecho->setToolTip("Inclui o texto do OCR na sua pergunta");
     layoutAcoes->addWidget(m_btnColarTrecho);
@@ -535,10 +535,10 @@ QWidget* MainWindow::criarAbaChatIA()
     );
     layoutInput->addWidget(m_chatInput, 1);
 
-    m_btnChatEnviar = new QPushButton("➤", aba);
+    m_btnChatEnviar = new QPushButton("Enviar", aba);
     m_btnChatEnviar->setObjectName("btnPrimario");
-    m_btnChatEnviar->setFixedSize(50, 70);
-    m_btnChatEnviar->setToolTip("Enviar pergunta para a IA (Ctrl+Enter)");
+    m_btnChatEnviar->setFixedSize(65, 70);
+    m_btnChatEnviar->setToolTip("Enviar pergunta (Ctrl+Enter)");
     layoutInput->addWidget(m_btnChatEnviar);
 
     layout->addLayout(layoutInput);
@@ -1720,10 +1720,10 @@ void MainWindow::onErroRequisicao(const QString &endpoint, const QString &mensag
             m_chatHistorico->append(
                 QString("<div style='margin-bottom: 12px; margin-top: 6px; background-color: rgba(239, 68, 68, 0.12); "
                         "border: 1px solid rgba(239, 68, 68, 0.35); border-left: 3px solid #ef4444; border-radius: 8px; padding: 10px 12px;'>"
-                        "<div style='font-size: 11px; font-weight: 700; color: #f87171; margin-bottom: 4px;'>⚠️ Falha no Assistente IA</div>"
+                        "<div style='font-size: 11px; font-weight: 700; color: #f87171; margin-bottom: 4px;'>Falha na comunicacao com a IA</div>"
                         "<div style='color: #fca5a5; font-size: 13px; line-height: 1.4;'>%1</div>"
                         "<div style='margin-top: 6px; font-size: 11px; color: #94a3b8;'>"
-                        "Dica: Vá no menu superior ou clique em <b>⚙️ Chaves/API</b> para validar sua chave Gemini ou escolher o modelo.</div>"
+                        "Verifique sua chave de API em <b>Configurar API</b>.</div>"
                         "</div>").arg(mensagem.toHtmlEscaped())
             );
             m_chatHistorico->verticalScrollBar()->setValue(m_chatHistorico->verticalScrollBar()->maximum());
@@ -1841,11 +1841,11 @@ void MainWindow::onLimparChat()
     m_chatHistoricoJson = QJsonArray();
     m_chatHistorico->setHtml(
         "<div style='color: #94a3b8; font-size: 13px; line-height: 1.5;'>"
-        "<b style='color: #60a5fa;'>💬 Conversa reiniciada</b><br>"
-        "O histórico foi limpo. Faça uma nova pergunta ou anexe um circuito."
+        "<b style='color: #60a5fa;'>Conversa reiniciada</b><br>"
+        "Historico limpo. Faca uma nova pergunta ou anexe um circuito."
         "</div>"
     );
-    appendLog("Histórico do Assistente IA limpo.", "info");
+    appendLog("Historico do Assistente IA limpo.", "info");
 }
 
 void MainWindow::onEnviarChat()
@@ -1861,7 +1861,7 @@ void MainWindow::onEnviarChat()
                        "<div style='background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 8px 10px; color: #f1f5f9; font-size: 13px; line-height: 1.4;'>";
 
     if (!m_chatImagemBase64.isEmpty()) {
-        userHtml += "<div style='color: #93c5fd; font-size: 11px; margin-bottom: 4px;'>📷 [Imagem / Circuito Anexado]</div>";
+        userHtml += "<div style='color: #93c5fd; font-size: 11px; margin-bottom: 4px;'>[Imagem anexada]</div>";
     }
     if (!texto.isEmpty()) {
         userHtml += texto.toHtmlEscaped().replace("\n", "<br>");
@@ -1923,8 +1923,8 @@ void MainWindow::onChatRespostaResultado(const QString &resposta, const QString 
 void MainWindow::onConfigurarIA()
 {
     QDialog dlg(this);
-    dlg.setWindowTitle("Configuração de IA e Chaves de API");
-    dlg.setMinimumWidth(440);
+    dlg.setWindowTitle("Configurar API");
+    dlg.setMinimumWidth(420);
     dlg.setStyleSheet(
         "QDialog { background-color: #131418; color: #e2e8f0; }"
         "QLabel { color: #cbd5e1; font-size: 12px; }"
@@ -1938,19 +1938,21 @@ void MainWindow::onConfigurarIA()
     auto *layout = new QVBoxLayout(&dlg);
     layout->setSpacing(12);
 
+    // Modo: Online (Gemini) ou Offline (Ollama)
     auto *form = new QFormLayout();
     form->setSpacing(10);
 
-    auto *comboProvedor = new QComboBox(&dlg);
-    comboProvedor->addItem("Google Gemini (Recomendado: Rápido & Visão de Circuitos)", "gemini");
-    comboProvedor->addItem("Ollama (Local / Offline)", "ollama");
-    comboProvedor->setCurrentIndex(m_iaProvedor == "ollama" ? 1 : 0);
-    form->addRow("Provedor:", comboProvedor);
+    auto *comboModo = new QComboBox(&dlg);
+    comboModo->addItem("Google Gemini (online, requer chave)", "gemini");
+    comboModo->addItem("Ollama (offline, local)", "ollama");
+    comboModo->setCurrentIndex(m_iaProvedor == "ollama" ? 1 : 0);
+    form->addRow("Modo:", comboModo);
 
+    // Chave Gemini
     auto *txtApiKey = new QLineEdit(&dlg);
     txtApiKey->setEchoMode(QLineEdit::Password);
     txtApiKey->setText(m_iaApiKey);
-    txtApiKey->setPlaceholderText("Cole sua API Key do Google Gemini aqui");
+    txtApiKey->setPlaceholderText("Chave de API do Google Gemini");
 
     auto *chkMostrarKey = new QCheckBox("Mostrar chave", &dlg);
     chkMostrarKey->setStyleSheet("color: #94a3b8; font-size: 11px;");
@@ -1962,23 +1964,27 @@ void MainWindow::onConfigurarIA()
     layoutKey->addWidget(txtApiKey);
     layoutKey->addWidget(chkMostrarKey);
 
-    auto *lblLinkKey = new QLabel("<a href='https://aistudio.google.com/app/apikey' style='color:#60a5fa; text-decoration:none;'>🔗 Obter chave gratuita no Google AI Studio (ai.google.dev)</a>", &dlg);
+    auto *lblLinkKey = new QLabel(
+        "<a href='https://aistudio.google.com/app/apikey' style='color:#60a5fa; text-decoration:none;'>"
+        "Gerar chave gratuita em aistudio.google.com</a>", &dlg);
     lblLinkKey->setOpenExternalLinks(true);
     layoutKey->addWidget(lblLinkKey);
 
     form->addRow("Chave Gemini:", layoutKey);
 
+    // Modelo Gemini
     auto *comboModelo = new QComboBox(&dlg);
-    comboModelo->addItem("gemini-1.5-flash (Recomendado: Rápido & Gratuito)", "gemini-1.5-flash");
-    comboModelo->addItem("gemini-2.0-flash (Nova Geração Google)", "gemini-2.0-flash");
-    comboModelo->addItem("gemini-1.5-pro (Raciocínio Avançado)", "gemini-1.5-pro");
+    comboModelo->addItem("gemini-1.5-flash", "gemini-1.5-flash");
+    comboModelo->addItem("gemini-2.0-flash", "gemini-2.0-flash");
+    comboModelo->addItem("gemini-1.5-pro", "gemini-1.5-pro");
     const int idxMod = comboModelo->findData(m_iaModelo);
     if (idxMod >= 0) comboModelo->setCurrentIndex(idxMod);
-    form->addRow("Modelo Gemini:", comboModelo);
+    form->addRow("Modelo:", comboModelo);
 
+    // Modelo Ollama (offline)
     auto *txtOllamaModelo = new QLineEdit(&dlg);
     txtOllamaModelo->setText(m_iaProvedor == "ollama" ? m_iaModelo : "llama3");
-    txtOllamaModelo->setPlaceholderText("ex: llama3, llama3.2-vision, mistral");
+    txtOllamaModelo->setPlaceholderText("ex: llama3, mistral");
     form->addRow("Modelo Ollama:", txtOllamaModelo);
 
     layout->addLayout(form);
@@ -1990,7 +1996,7 @@ void MainWindow::onConfigurarIA()
     connect(btnCancelar, &QPushButton::clicked, &dlg, &QDialog::reject);
     btnBox->addWidget(btnCancelar);
 
-    auto *btnSalvar = new QPushButton("Salvar Configurações", &dlg);
+    auto *btnSalvar = new QPushButton("Salvar", &dlg);
     btnSalvar->setStyleSheet("background-color: #2563eb; color: #ffffff; border: none; font-weight: 600;");
     connect(btnSalvar, &QPushButton::clicked, &dlg, &QDialog::accept);
     btnBox->addWidget(btnSalvar);
@@ -1998,7 +2004,7 @@ void MainWindow::onConfigurarIA()
     layout->addLayout(btnBox);
 
     if (dlg.exec() == QDialog::Accepted) {
-        m_iaProvedor = comboProvedor->currentData().toString();
+        m_iaProvedor = comboModo->currentData().toString();
         m_iaApiKey   = txtApiKey->text().trimmed();
         if (m_iaProvedor == "gemini") {
             m_iaModelo = comboModelo->currentData().toString();
@@ -2011,7 +2017,7 @@ void MainWindow::onConfigurarIA()
         if (m_lblModeloAtivoChat) {
             m_lblModeloAtivoChat->setText(QString("IA: %1 (%2)").arg(m_iaProvedor.toUpper(), m_iaModelo));
         }
-        appendLog("Configurações de IA salvas com sucesso.", "success");
+        appendLog("Configuracoes de IA salvas.", "success");
     }
 }
 

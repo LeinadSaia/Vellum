@@ -25,10 +25,10 @@ public:
                             QObject *parent = nullptr);
 
     /** POST /limpar_ocr */
-    void limparOcr(const QString &textoSujo);
+    void limparOcr(const QString &textoSujo, const QString &apiKey = QString());
 
     /** POST /limpar_ocr (imagem base64) */
-    void processarImagemOcr(const QByteArray &imagemBase64);
+    void processarImagemOcr(const QByteArray &imagemBase64, const QString &apiKey = QString());
 
     /** POST /gravar_e_transcrever (legado) */
     void gravarETranscrever();
@@ -46,7 +46,7 @@ public:
     void pararGravacao(const QString &idioma = "en");
 
     /** POST /traduzir */
-    void traduzirDireto(const QString &textoIngles = QString(), const QByteArray &imagemBase64 = QByteArray());
+    void traduzirDireto(const QString &textoIngles = QString(), const QByteArray &imagemBase64 = QByteArray(), const QString &apiKey = QString());
 
     /** POST /falar (TTS Neural com Edge TTS) */
     void falarTexto(const QString &texto, const QString &voz = "en-US-JennyNeural", const QString &velocidade = "+0%");

@@ -1242,11 +1242,13 @@ void MainWindow::onToggleModoCaptura(bool ativo)
 
 void MainWindow::onTraduzirDireto()
 {
+    // Passa a chave Gemini: se disponivel, a traducao roda na nuvem (leve para PCs fracos)
+    const QString geminiKey = (m_iaProvedor == "gemini") ? m_iaApiKey : QString();
     if (m_textoOcrAtual.startsWith("BASE64:")) {
         const QByteArray b64 = m_textoOcrAtual.mid(7).toLatin1();
-        m_net->traduzirDireto(QString(), b64);
+        m_net->traduzirDireto(QString(), b64, geminiKey);
     } else if (!m_textoOcrAtual.isEmpty()) {
-        m_net->traduzirDireto(m_textoOcrAtual);
+        m_net->traduzirDireto(m_textoOcrAtual, QByteArray(), geminiKey);
     }
 }
 

@@ -81,13 +81,14 @@ void NetworkManager::verificarConexao()
     });
 }
 
-void NetworkManager::limparOcr(const QString &textoSujo)
+void NetworkManager::limparOcr(const QString &textoSujo, const QString &apiKey)
 {
     const QString endpoint = "/limpar_ocr";
     emit requisicaoIniciada(endpoint);
 
     QJsonObject body;
     body["texto_sujo"] = textoSujo;
+    if (!apiKey.isEmpty()) body["api_key"] = apiKey;
     const QByteArray jsonBody = QJsonDocument(body).toJson(QJsonDocument::Compact);
 
     auto *reply = postJson(endpoint, jsonBody);
@@ -111,13 +112,14 @@ void NetworkManager::limparOcr(const QString &textoSujo)
     });
 }
 
-void NetworkManager::processarImagemOcr(const QByteArray &imagemBase64)
+void NetworkManager::processarImagemOcr(const QByteArray &imagemBase64, const QString &apiKey)
 {
     const QString endpoint = "/limpar_ocr";
     emit requisicaoIniciada(endpoint);
 
     QJsonObject body;
     body["imagem_base64"] = QString::fromLatin1(imagemBase64);
+    if (!apiKey.isEmpty()) body["api_key"] = apiKey;
     const QByteArray jsonBody = QJsonDocument(body).toJson(QJsonDocument::Compact);
 
     auto *reply = postJson(endpoint, jsonBody);
@@ -236,7 +238,7 @@ void NetworkManager::avaliarTraducao(const QString &textoIngles, const QString &
     });
 }
 
-void NetworkManager::traduzirDireto(const QString &textoIngles, const QByteArray &imagemBase64)
+void NetworkManager::traduzirDireto(const QString &textoIngles, const QByteArray &imagemBase64, const QString &apiKey)
 {
     const QString endpoint = "/traduzir";
     emit requisicaoIniciada(endpoint);
@@ -246,6 +248,8 @@ void NetworkManager::traduzirDireto(const QString &textoIngles, const QByteArray
         body["texto_ingles"] = textoIngles;
     if (!imagemBase64.isEmpty())
         body["imagem_base64"] = QString::fromLatin1(imagemBase64);
+    if (!apiKey.isEmpty())
+        body["api_key"] = apiKey;
 
     const QByteArray jsonBody = QJsonDocument(body).toJson(QJsonDocument::Compact);
     auto *reply = postJson(endpoint, jsonBody);

@@ -19,11 +19,12 @@ import logging
 import base64
 import io
 import os
+import re
 import tempfile
 import time
 import shutil
 import difflib
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 
 import numpy as np
 import sounddevice as sd
@@ -125,8 +126,47 @@ def _gravar_background(taxa_amostragem: int = 16000) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Extração de OCR Otimizada (Tesseract)
+# Otimizacao 1: Pre-processador de regras para OCR de eng. eletrica
+# Corrige erros tipicos de escaneamento ANTES de qualquer chamada LLM,
+# de forma instantanea e sem consumo de CPU/GPU.
 # ---------------------------------------------------------------------------
+_CORRECOES_ENG: List[Tuple[re.Pattern, str]] = [
+    # Numeros confundidos com letras em contexto numerico
+    (re.compile(r'(?<=[\d\s])l(?=[\d\s.,])', re.IGNORECASE), '1'),   # l → 1 entre numeros
+    (re.compile(r'(?<=[\d\s])O(?=[\d\s.,])', re.IGNORECASE), '0'),   # O → 0 entre numeros
+    (re.compile(r'(?<=[\d\s])I(?=[\d\s.,])', re.IGNORECASE), '1'),   # I → 1 entre numeros
+    # Siglas classicas de semicondutores mal reconhecidas
+    (re.compile(r'\b[Nn][Pp][Nn]\b'), 'npn'),
+    (re.compile(r'\b[Pp][Nn][Pp]\b'), 'pnp'),
+    (re.compile(r'\bBJl\b'), 'BJT'),
+    (re.compile(r'\bMOSFEl\b'), 'MOSFET'),
+    (re.compile(r'\bJFEl\b'), 'JFET'),
+    (re.compile(r'\bCM0S\b'), 'CMOS'),
+    (re.compile(r'\bop.?amp\b', re.IGNORECASE), 'op-amp'),
+    # Parametros de polarizacao
+    (re.compile(r'\bVcc\b', re.IGNORECASE), 'Vcc'),
+    (re.compile(r'\bVee\b', re.IGNORECASE), 'Vee'),
+    (re.compile(r'\bVbe\b', re.IGNORECASE), 'Vbe'),
+    (re.compile(r'\bVce\b', re.IGNORECASE), 'Vce'),
+    (re.compile(r'\bVcb\b', re.IGNORECASE), 'Vcb'),
+    (re.compile(r'\bhFE\b', re.IGNORECASE), 'hFE'),
+    (re.compile(r'\bhfe\b', re.IGNORECASE), 'hfe'),
+    # Unidades com letras trocadas
+    (re.compile(r'(\d)\s*k[Oo0](?=[\s,;\.]|$)'), r'\1 kΩ'),
+    (re.compile(r'(\d)\s*M[Oo0](?=[\s,;\.]|$)'), r'\1 MΩ'),
+    (re.compile(r'(\d)\s*[µu]A\b'), r'\1 μA'),
+    (re.compile(r'(\d)\s*[µu]F\b'), r'\1 μF'),
+    # Remover caracteres lixo comuns de escaner
+    (re.compile(r'[|](?![\w])'), ' '),
+    (re.compile(r'\s{3,}'), '  '),
+]
+
+def _pre_processar_ocr_engenharia(texto: str) -> str:
+    """Aplica correcoes rapidas de OCR especificas de eng. eletrica sem usar LLM."""
+    for padrao, substituto in _CORRECOES_ENG:
+        texto = padrao.sub(substituto, texto)
+    return texto.strip()
+
 def _extrair_texto_imagem(imagem_base64: str) -> str:
     """
     Extrai texto de imagem Base64 com pré-processamento avançado para livros escaneados:
@@ -155,7 +195,7 @@ def _extrair_texto_imagem(imagem_base64: str) -> str:
     if len(texto) < 4 and (image.width > 50 and image.height > 25):
         texto = pytesseract.image_to_string(img_proc, lang='eng', config='--psm 4 --oem 1').strip()
 
-    return texto
+    return _pre_processar_ocr_engenharia(texto)
 
 
 # ---------------------------------------------------------------------------
@@ -205,74 +245,148 @@ async def _sintetizar_e_tocar_voz_async(texto: str, voz: str = "en-US-JennyNeura
 
 
 # ---------------------------------------------------------------------------
-# Funções de Processamento IA (Ollama)
+# Otimizacao 2: Chamada unica Ollama — traduz + retorna ingles corrigido
+# Otimizacao 3: Roteamento pela API Gemini quando chave disponivel
 # ---------------------------------------------------------------------------
-def _traduzir_sync(texto_ingles: Optional[str] = None, imagem_base64: Optional[str] = None) -> tuple:
-    """Tradução técnica direta para Português usando Ollama."""
+async def _traduzir_via_gemini_async(texto_ingles: str, api_key: str) -> Tuple[str, str]:
+    """Traduz via Gemini API (cloud) — zero carga no PC local."""
+    mod = (os.environ.get("GEMINI_TRANSLATE_MODEL", "gemini-3.8-flash"))
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{mod}:generateContent?key={api_key}"
+    prompt = (
+        "You are a senior technical translator specialized in Electrical Engineering, Electronics and Telecommunications.\n"
+        "The text below comes from a scanned academic textbook and may have minor OCR errors.\n"
+        "Your task:\n"
+        "1. Fix any OCR errors in the original English text (preserve technical terms like npn, pnp, BJT, MOSFET, Vcc, hFE).\n"
+        "2. Translate the corrected text to Brazilian Portuguese with maximum technical fidelity.\n"
+        "Respond ONLY with valid JSON in this exact format (no markdown, no extra text):\n"
+        '{"en_corrigido": "<corrected english>", "pt": "<portuguese translation>"}\n\n'
+        f"Text:\n{texto_ingles}"
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": max(512, len(texto_ingles) * 3)}
+    }
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            resp = await client.post(url, json=payload)
+            if resp.status_code != 200:
+                raise RuntimeError(f"Gemini {resp.status_code}: {resp.text[:200]}")
+            raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+            # Remove markdown code fences se o modelo retornou com ```json
+            raw = re.sub(r'^```[a-z]*\n?', '', raw).rstrip('`').strip()
+            import json as _json
+            data = _json.loads(raw)
+            return data.get("en_corrigido", texto_ingles), data.get("pt", "")
+    except Exception as exc:
+        log.warning(f"[Gemini Traducao] Falha, fazendo fallback para Ollama: {exc}")
+        raise
+
+
+def _traduzir_sync(texto_ingles: Optional[str] = None, imagem_base64: Optional[str] = None,
+                  gemini_api_key: Optional[str] = None) -> tuple:
+    """Traducao tecnica EN→PT com correcao de OCR embutida.
+
+    Fluxo:
+      1. OCR (Tesseract) se vier imagem
+      2. Pre-processador de regras instantaneo (zero LLM)
+      3. Se chave Gemini disponivel → API em nuvem (leve para PCs fracos)
+         Senao → Ollama local com prompt duplo (traduz + corrige EN em uma chamada)
+    Retorna: (texto_en_corrigido, texto_pt)
+    """
     if imagem_base64:
-        log.info("[Tradução] Extraindo texto da imagem via Tesseract otimizado...")
+        log.info("[Traducao] Extraindo texto da imagem via Tesseract...")
         try:
-            texto_ingles = _extrair_texto_imagem(imagem_base64)
-            log.info(f"[Tradução] OCR extraiu {len(texto_ingles)} caracteres.")
+            texto_ingles = _extrair_texto_imagem(imagem_base64)  # ja aplica pre-processador
+            log.info(f"[Traducao] OCR extraiu {len(texto_ingles)} caracteres.")
             if not texto_ingles:
-                return ("", "(Nenhum texto detectado nesta área da página)")
+                return ("", "(Nenhum texto detectado nesta area da pagina)")
         except Exception as e:
-            log.error(f"[Tradução] Erro no OCR: {e}")
+            log.error(f"[Traducao] Erro no OCR: {e}")
             raise RuntimeError(f"Erro ao extrair imagem: {e}")
 
     if not texto_ingles:
         return ("", "")
 
-    log.info(f"[Tradução] Traduzindo {len(texto_ingles)} caracteres com Ollama ({OLLAMA_MODEL})...")
+    # Pre-processador de regras (instantaneo, sem LLM)
+    texto_ingles = _pre_processar_ocr_engenharia(texto_ingles)
 
-    prompt = f"""Você é um tradutor técnico sênior especializado em Engenharia Elétrica, Eletrônica, Telecomunicações e Computação.
-Traduza o seguinte texto do inglês para o português do Brasil com máxima fidelidade e rigor técnico.
+    # Otimizacao 3: Gemini disponivel → nuvem, zero CPU local
+    if gemini_api_key:
+        import asyncio as _aio
+        try:
+            loop = _aio.new_event_loop()
+            en_corrigido, pt = loop.run_until_complete(
+                _traduzir_via_gemini_async(texto_ingles, gemini_api_key)
+            )
+            loop.close()
+            log.info("[Traducao] Concluida via Gemini (nuvem).")
+            return en_corrigido, pt
+        except Exception:
+            pass  # fallback para Ollama abaixo
 
-Instruções para textos escaneados e termos de Engenharia:
-1. Este texto provém de livros acadêmicos escaneados e pode conter pequenas imperfeições de OCR.
-2. Reconheça e deduza pelo contexto termos e siglas clássicos da Engenharia:
-   - Semicondutores & Circuitos: transistor npn, pnp, BJT, MOSFET, JFET, diodo zener, LED, CMOS, op-amp.
-   - Parâmetros & Polarizações: Vcc, Vee, Vbe, Vce, Ib, Ic, Ie, hfe, beta, ganho, impedância, reatância, malha, nó.
-   - Unidades: kΩ, MΩ, mA, µA, pF, nF, µF, V, mV, GHz, MHz, kHz.
-3. Preserve integralmente equações, fórmulas matemáticas, nomes de variáveis e notações científicas.
-4. Retorne APENAS a tradução em português, sem introduções, aspas extras ou explicações adicionais.
+    # Otimizacao 2: Prompt unico que traduz E retorna EN corrigido — elimina _limpar_ocr_sync
+    log.info(f"[Traducao] Processando {len(texto_ingles)} chars com Ollama ({OLLAMA_MODEL})...")
+    prompt = f"""Voce eh um tradutor tecnico senior especializado em Engenharia Eletrica, Eletronica e Telecomunicacoes.
+O texto abaixo vem de livro academico escaneado e pode ter erros menores de OCR.
 
-Texto em inglês:
+Sua tarefa:
+1. Corrija os erros de OCR no texto original em ingles (preserve siglas: npn, pnp, BJT, MOSFET, Vcc, hFE, op-amp).
+2. Traduza o texto corrigido para o portugues do Brasil com maximo rigor tecnico.
+
+Responda SOMENTE com JSON no formato exato abaixo (sem markdown, sem texto extra):
+{{"en_corrigido": "<ingles corrigido>", "pt": "<traducao em portugues>"}}
+
+Texto em ingles:
 {texto_ingles}
 """
-    resposta = ollama.generate(
-        model=OLLAMA_MODEL,
-        prompt=prompt.strip(),
-        options={
-            "temperature": 0.1,
-            "num_predict": max(256, int(len(texto_ingles) * 2)),
-        },
-    )
-    traducao = resposta["response"].strip()
-    log.info("[Tradução] Tradução concluída.")
-    return texto_ingles, traducao
+    try:
+        resposta = ollama.generate(
+            model=OLLAMA_MODEL,
+            prompt=prompt.strip(),
+            options={"temperature": 0.05, "num_predict": max(512, int(len(texto_ingles) * 3))},
+        )
+        import json as _json
+        raw = resposta["response"].strip()
+        raw = re.sub(r'^```[a-z]*\n?', '', raw).rstrip('`').strip()
+        data = _json.loads(raw)
+        en_corrigido = data.get("en_corrigido", texto_ingles)
+        pt = data.get("pt", "")
+        log.info("[Traducao] Concluida via Ollama (prompt duplo).")
+        return en_corrigido, pt
+    except Exception as exc:
+        log.warning(f"[Traducao] JSON falhou ({exc}), usando prompt simples de fallback.")
+        # Fallback: prompt simples sem JSON (compatibilidade com modelos menores)
+        prompt_simples = f"""Traduza o seguinte texto de ingles para portugues do Brasil com rigor tecnico.
+Retorne APENAS a traducao, sem comentarios.
+
+{texto_ingles}"""
+        resposta = ollama.generate(
+            model=OLLAMA_MODEL,
+            prompt=prompt_simples.strip(),
+            options={"temperature": 0.1, "num_predict": max(256, int(len(texto_ingles) * 2))},
+        )
+        return texto_ingles, resposta["response"].strip()
 
 
-def _limpar_ocr_sync(texto_sujo: Optional[str] = None, imagem_base64: Optional[str] = None) -> str:
-    """Corrige falhas de OCR mantendo o texto em inglês."""
+def _limpar_ocr_sync(texto_sujo: Optional[str] = None, imagem_base64: Optional[str] = None,
+                    gemini_api_key: Optional[str] = None) -> str:
+    """Retorna ingles corrigido reutilizando o prompt duplo de _traduzir_sync.
+    Nao faz chamada extra ao Ollama — aproveita o en_corrigido do prompt de traducao.
+    Para o tutor, recebe o texto ja processado pelo pre-processador de regras.
+    """
     if imagem_base64:
-        texto_sujo = _extrair_texto_imagem(imagem_base64)
-
+        texto_sujo = _extrair_texto_imagem(imagem_base64)  # ja aplica pre-processador
     if not texto_sujo:
         return ""
+    # Pre-processador de regras (instantaneo)
+    texto_sujo = _pre_processar_ocr_engenharia(texto_sujo)
+    # Reutiliza o resultado de traducao para obter o EN corrigido sem chamada extra
+    try:
+        en_corrigido, _ = _traduzir_sync(texto_sujo, gemini_api_key=gemini_api_key)
+        return en_corrigido if en_corrigido else texto_sujo
+    except Exception:
+        return texto_sujo
 
-    prompt = f"""Corrija quaisquer erros pontuais de OCR preservando 100% dos termos técnicos em inglês.
-Retorne APENAS o texto corrigido, sem comentários.
-
-Texto com OCR:
-{texto_sujo}
-"""
-    resposta = ollama.generate(
-        model=OLLAMA_MODEL,
-        prompt=prompt.strip(),
-        options={"temperature": 0.1, "num_predict": 512},
-    )
-    return resposta["response"].strip()
 
 
 def _avaliar_pronuncia_sync(texto_esperado: str, texto_falado: str, nivel: str = "intermediario") -> dict:
@@ -357,6 +471,7 @@ app.add_middleware(
 class TextoSujoRequest(BaseModel):
     texto_sujo: Optional[str] = None
     imagem_base64: Optional[str] = None
+    api_key: Optional[str] = None  # Gemini key para roteamento em nuvem
 
 class TextoResponse(BaseModel):
     resultado: str
@@ -364,6 +479,7 @@ class TextoResponse(BaseModel):
 class TraduzirRequest(BaseModel):
     texto_ingles: Optional[str] = None
     imagem_base64: Optional[str] = None
+    api_key: Optional[str] = None  # Gemini key para roteamento em nuvem
 
 class TraducaoResponse(BaseModel):
     texto_ingles: str
@@ -456,29 +572,37 @@ async def parar_audio():
     return {"status": "parado"}
 
 
-@app.post("/traduzir", response_model=TraducaoResponse, tags=["Tradução"])
+@app.post("/traduzir", response_model=TraducaoResponse, tags=["Traducao"])
 async def traduzir(body: TraduzirRequest):
-    """Tradução técnica direta para Português usando Ollama."""
+    """Traducao tecnica EN→PT com correcao de OCR embutida.
+    Usa Gemini (nuvem, leve) se api_key disponivel, senao Ollama (local)."""
     if not body.texto_ingles and not body.imagem_base64:
-        raise HTTPException(status_code=422, detail="É necessário enviar 'texto_ingles' ou 'imagem_base64'.")
+        raise HTTPException(status_code=422, detail="Envie 'texto_ingles' ou 'imagem_base64'.")
 
+    gemini_key = (body.api_key or os.environ.get("GEMINI_API_KEY", "")).strip() or None
     try:
-        texto_en, traducao_pt = await asyncio.to_thread(_traduzir_sync, body.texto_ingles, body.imagem_base64)
+        texto_en, traducao_pt = await asyncio.to_thread(
+            _traduzir_sync, body.texto_ingles, body.imagem_base64, gemini_key
+        )
     except Exception as exc:
         log.error(f"[/traduzir] Erro: {exc}")
-        raise HTTPException(status_code=500, detail=f"Erro na tradução: {exc}")
+        raise HTTPException(status_code=500, detail=f"Erro na traducao: {exc}")
 
     return TraducaoResponse(texto_ingles=texto_en, traducao_portugues=traducao_pt)
 
 
 @app.post("/limpar_ocr", response_model=TextoResponse, tags=["OCR"])
 async def limpar_ocr(body: TextoSujoRequest):
-    """Recebe texto com OCR e retorna texto limpo em inglês."""
+    """Recebe texto com OCR e retorna texto limpo em ingles.
+    Aplica pre-processador de regras instantaneo + prompt duplo Ollama (ou Gemini)."""
     if not body.texto_sujo and not body.imagem_base64:
-        raise HTTPException(status_code=422, detail="É necessário enviar 'texto_sujo' ou 'imagem_base64'.")
+        raise HTTPException(status_code=422, detail="Envie 'texto_sujo' ou 'imagem_base64'.")
 
+    gemini_key = (body.api_key or os.environ.get("GEMINI_API_KEY", "")).strip() or None
     try:
-        resultado = await asyncio.to_thread(_limpar_ocr_sync, body.texto_sujo, body.imagem_base64)
+        resultado = await asyncio.to_thread(
+            _limpar_ocr_sync, body.texto_sujo, body.imagem_base64, gemini_key
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Erro no OCR/IA: {exc}")
 

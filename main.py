@@ -31,7 +31,7 @@ import whisper
 import ollama
 import edge_tts
 import miniaudio
-from PIL import Image
+from PIL import Image, ImageOps
 import pytesseract
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -128,17 +128,32 @@ def _gravar_background(taxa_amostragem: int = 16000) -> None:
 # ---------------------------------------------------------------------------
 def _extrair_texto_imagem(imagem_base64: str) -> str:
     """
-    Extrai texto de imagem Base64 com pré-processamento rápido:
-    - Escala de cinza (L)
-    - Modo PSM 6: assume bloco uniforme de texto
-    - Modo OEM 1: LSTM neural engine
-    Reduz o tempo de extração de ~1.5s para ~0.15s em CPUs comuns.
+    Extrai texto de imagem Base64 com pré-processamento avançado para livros escaneados:
+    1. Escala de cinza (L)
+    2. Autocontraste dinâmico para eliminar sombras e amarelamento de papel escaneado
+    3. Super-resolução / Upscaling 2x com Lanczos para caracteres pequenos (como npn, pnp, Vcc, subscritos)
+    4. Tesseract com bloco uniforme (--psm 6) e motor LSTM (--oem 1), com fallback adaptativo
     """
     image_data = base64.b64decode(imagem_base64)
     image = Image.open(io.BytesIO(image_data))
-    image = image.convert('L')
+    
+    gray = image.convert('L')
+    contraste = ImageOps.autocontrast(gray, cutoff=2)
+
+    # Se o recorte tiver fontes pequenas (altura menor que 500px), amplia 2x para o Tesseract reconhecer siglas pequenas
+    if contraste.height < 500 or contraste.width < 1000:
+        fator = 2
+        img_proc = contraste.resize((contraste.width * fator, contraste.height * fator), Image.Resampling.LANCZOS)
+    else:
+        img_proc = contraste
+
     config = '--psm 6 --oem 1'
-    texto = pytesseract.image_to_string(image, lang='eng', config=config).strip()
+    texto = pytesseract.image_to_string(img_proc, lang='eng', config=config).strip()
+
+    # Se veio quase vazio (ex: tabela ou diagrama), tenta psm 4 ou psm 3
+    if len(texto) < 4 and (image.width > 50 and image.height > 25):
+        texto = pytesseract.image_to_string(img_proc, lang='eng', config='--psm 4 --oem 1').strip()
+
     return texto
 
 
@@ -209,11 +224,17 @@ def _traduzir_sync(texto_ingles: Optional[str] = None, imagem_base64: Optional[s
 
     log.info(f"[Tradução] Traduzindo {len(texto_ingles)} caracteres com Ollama ({OLLAMA_MODEL})...")
 
-    prompt = f"""Você é um tradutor técnico especializado em Engenharia, Computação e Ciências Exatas.
-Traduza o seguinte texto do inglês para o português do Brasil com máxima fidelidade técnica.
-Se houver pequenas falhas de OCR (como hífens quebrados ou letras trocadas), deduza o termo correto pelo contexto.
-Preserve integralmente fórmulas, variáveis, símbolos e nomes próprios.
-Retorne APENAS a tradução em português, sem introduções, aspas extras ou explicações adicionais.
+    prompt = f"""Você é um tradutor técnico sênior especializado em Engenharia Elétrica, Eletrônica, Telecomunicações e Computação.
+Traduza o seguinte texto do inglês para o português do Brasil com máxima fidelidade e rigor técnico.
+
+Instruções para textos escaneados e termos de Engenharia:
+1. Este texto provém de livros acadêmicos escaneados e pode conter pequenas imperfeições de OCR.
+2. Reconheça e deduza pelo contexto termos e siglas clássicos da Engenharia:
+   - Semicondutores & Circuitos: transistor npn, pnp, BJT, MOSFET, JFET, diodo zener, LED, CMOS, op-amp.
+   - Parâmetros & Polarizações: Vcc, Vee, Vbe, Vce, Ib, Ic, Ie, hfe, beta, ganho, impedância, reatância, malha, nó.
+   - Unidades: kΩ, MΩ, mA, µA, pF, nF, µF, V, mV, GHz, MHz, kHz.
+3. Preserve integralmente equações, fórmulas matemáticas, nomes de variáveis e notações científicas.
+4. Retorne APENAS a tradução em português, sem introduções, aspas extras ou explicações adicionais.
 
 Texto em inglês:
 {texto_ingles}

@@ -850,7 +850,7 @@ void MainWindow::connectSignals()
 
     connect(m_pdfView->pageNavigator(), &QPdfPageNavigator::currentPageChanged,
             this, [this](int pag) {
-        if (m_modoVis == ModoVisualizacao::Continuo) {
+        if (!m_ajustandoZoom && m_modoVis == ModoVisualizacao::Continuo) {
             m_paginaAtual = pag;
             atualizarInfoNavegacao();
         }
@@ -1203,6 +1203,16 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         }
         break;
     }
+    case QEvent::Wheel: {
+        auto *we = static_cast<QWheelEvent*>(event);
+        if (we->modifiers() & Qt::ControlModifier) {
+            const int delta = we->angleDelta().y();
+            if (delta > 0) zoomDelta(0.12);
+            else if (delta < 0) zoomDelta(-0.12);
+            return true;
+        }
+        break;
+    }
     default:
         break;
     }
@@ -1258,6 +1268,7 @@ void MainWindow::setModoVisualizacao(ModoVisualizacao modo)
     case ModoVisualizacao::Continuo:
         m_pdfView->setPageMode(QPdfView::PageMode::MultiPage);
         m_pdfView2->setVisible(false);
+        m_pdfView->pageNavigator()->jump(m_paginaAtual, {}, 0);
         break;
     }
 }
@@ -1297,6 +1308,9 @@ void MainWindow::atualizarInfoNavegacao()
 void MainWindow::aplicarZoom(qreal fator)
 {
     fator = qBound(0.2, fator, 4.0);
+    const int pagAlvo = m_paginaAtual;
+    m_ajustandoZoom = true;
+
     m_pdfView->setZoomMode(QPdfView::ZoomMode::Custom);
     m_pdfView->setZoomFactor(fator);
 
@@ -1304,7 +1318,15 @@ void MainWindow::aplicarZoom(qreal fator)
         m_pdfView2->setZoomMode(QPdfView::ZoomMode::Custom);
         m_pdfView2->setZoomFactor(fator);
     }
+
+    if (m_modoVis == ModoVisualizacao::Continuo) {
+        m_pdfView->pageNavigator()->jump(pagAlvo, {}, 0);
+    } else {
+        irParaPagina(pagAlvo);
+    }
+
     atualizarLabelZoom();
+    m_ajustandoZoom = false;
 }
 
 void MainWindow::zoomDelta(qreal delta)
@@ -1318,16 +1340,38 @@ void MainWindow::onZoomReset() { aplicarZoom(1.0); }
 
 void MainWindow::onAjustarLargura()
 {
+    const int pagAlvo = m_paginaAtual;
+    m_ajustandoZoom = true;
+
     m_pdfView->setZoomMode(QPdfView::ZoomMode::FitToWidth);
     if (m_pdfView2->isVisible()) m_pdfView2->setZoomMode(QPdfView::ZoomMode::FitToWidth);
+
+    if (m_modoVis == ModoVisualizacao::Continuo) {
+        m_pdfView->pageNavigator()->jump(pagAlvo, {}, 0);
+    } else {
+        irParaPagina(pagAlvo);
+    }
+
     atualizarLabelZoom();
+    m_ajustandoZoom = false;
 }
 
 void MainWindow::onAjustarPagina()
 {
+    const int pagAlvo = m_paginaAtual;
+    m_ajustandoZoom = true;
+
     m_pdfView->setZoomMode(QPdfView::ZoomMode::FitInView);
     if (m_pdfView2->isVisible()) m_pdfView2->setZoomMode(QPdfView::ZoomMode::FitInView);
+
+    if (m_modoVis == ModoVisualizacao::Continuo) {
+        m_pdfView->pageNavigator()->jump(pagAlvo, {}, 0);
+    } else {
+        irParaPagina(pagAlvo);
+    }
+
     atualizarLabelZoom();
+    m_ajustandoZoom = false;
 }
 
 void MainWindow::atualizarLabelZoom()

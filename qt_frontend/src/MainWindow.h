@@ -127,6 +127,7 @@ private:
     bool             m_modoCaptura   = false;
     bool             m_gravando      = false;
     bool             m_panAtivo      = false;
+    bool             m_ajustandoZoom = false;
     ModoVisualizacao m_modoVis       = ModoVisualizacao::UmaPagina;
     int              m_paginaAtual   = 0;
 

@@ -263,9 +263,12 @@ async def _sintetizar_e_tocar_voz_async(texto: str, voz: str = "en-US-JennyNeura
 # Otimizacao 3: Roteamento pela API Gemini quando chave disponivel
 # ---------------------------------------------------------------------------
 async def _traduzir_via_gemini_async(texto_ingles: str, api_key: str) -> Tuple[str, str]:
-    """Traduz via Gemini API (cloud) — zero carga no PC local."""
-    mod = (os.environ.get("GEMINI_TRANSLATE_MODEL", "gemini-3.8-flash"))
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{mod}:generateContent?key={api_key}"
+    """Traduz via Gemini API (cloud) — zero carga no PC local.
+    Inclui fallback automatico para gemini-3.5-flash em caso de sobrecarga (503/timeout)."""
+    modelos_candidatos = [
+        os.environ.get("GEMINI_TRANSLATE_MODEL", "gemini-3.8-flash"),
+        "gemini-3.5-flash"
+    ]
     prompt = (
         "You are a senior technical translator specialized in Electrical Engineering, Electronics and Telecommunications.\n"
         "The text below comes from a scanned academic textbook and may have minor OCR errors.\n"
@@ -280,20 +283,32 @@ async def _traduzir_via_gemini_async(texto_ingles: str, api_key: str) -> Tuple[s
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.1, "maxOutputTokens": max(512, len(texto_ingles) * 3)}
     }
-    try:
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            resp = await client.post(url, json=payload)
-            if resp.status_code != 200:
-                raise RuntimeError(f"Gemini {resp.status_code}: {resp.text[:200]}")
-            raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-            # Remove markdown code fences se o modelo retornou com ```json
-            raw = re.sub(r'^```[a-z]*\n?', '', raw).rstrip('`').strip()
-            import json as _json
-            data = _json.loads(raw)
-            return data.get("en_corrigido", texto_ingles), data.get("pt", "")
-    except Exception as exc:
-        log.warning(f"[Gemini Traducao] Falha, fazendo fallback para Ollama: {exc}")
-        raise
+
+    ultimo_erro = None
+    for mod in modelos_candidatos:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{mod}:generateContent?key={api_key}"
+        for tentativa in range(2):
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                        raw = re.sub(r'^```[a-z]*\n?', '', raw).rstrip('`').strip()
+                        import json as _json
+                        data = _json.loads(raw)
+                        return data.get("en_corrigido", texto_ingles), data.get("pt", "")
+                    elif resp.status_code in (503, 429):
+                        ultimo_erro = f"Gemini {mod} retornou {resp.status_code}"
+                        await asyncio.sleep(1.0)
+                        continue
+                    else:
+                        raise RuntimeError(f"Gemini {mod} {resp.status_code}: {resp.text[:200]}")
+            except Exception as exc:
+                ultimo_erro = str(exc)
+                await asyncio.sleep(0.5)
+
+    log.warning(f"[Gemini Traducao] Falha em todos os modelos ({ultimo_erro}), fazendo fallback para Ollama")
+    raise RuntimeError(ultimo_erro or "Falha na API Gemini")
 
 
 def _traduzir_sync(texto_ingles: Optional[str] = None, imagem_base64: Optional[str] = None,
@@ -371,6 +386,7 @@ Texto em ingles:
         resposta = ollama.generate(
             model=OLLAMA_MODEL,
             prompt=prompt.strip(),
+            format="json",
             options={"temperature": 0.05, "num_predict": num_predict_duplo},
         )
         import json as _json
@@ -730,7 +746,7 @@ async def _chamar_gemini_chat_async(mensagem: str, imagem_base64: Optional[str],
     # Mapeamento para modelos validos atualmente na API do Google (v1beta)
     # gemini-3.8-flash e o modelo recomendado pela propria Google como substituto
     mod = (modelo or "").lower().strip()
-    VALIDOS = {"gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3.0-flash"}
+    VALIDOS = {"gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.8-flash-lite", "gemini-3.0-flash"}
     if not mod or mod not in VALIDOS:
         modelo_escolhido = "gemini-3.8-flash"
     else:

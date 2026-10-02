@@ -70,8 +70,22 @@ logging.basicConfig(
 log = logging.getLogger("leitor_backend")
 
 # Configuração de Modelos via Variáveis de Ambiente
+import functools
+import hashlib
+
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 WHISPER_MODEL_NAME = os.getenv("WHISPER_MODEL", "base.en")
+
+# Cache LRU para traducoes identicas (evita reprocessar o mesmo trecho)
+# Limitado a 128 entradas — custo de memoria minimo (~512 KB)
+@functools.lru_cache(maxsize=128)
+def _traducao_cacheada(texto_hash: str, modelo: str) -> tuple:
+    """Wrapper de cache: chave = hash SHA1 do texto + modelo."""
+    return ()  # placeholder — a logica real esta em _traduzir_sync_interno
+
+_cache_traducao: dict = {}  # hash -> (en_corrigido, pt)
+_MAX_CACHE = 128
+
 
 log.info(f"Carregando modelo Whisper '{WHISPER_MODEL_NAME}'... (otimizado para leitura em inglês)")
 try:
@@ -289,7 +303,8 @@ def _traduzir_sync(texto_ingles: Optional[str] = None, imagem_base64: Optional[s
     Fluxo:
       1. OCR (Tesseract) se vier imagem
       2. Pre-processador de regras instantaneo (zero LLM)
-      3. Se chave Gemini disponivel → API em nuvem (leve para PCs fracos)
+      3. Cache LRU: se o mesmo texto ja foi traduzido, retorna instantaneamente
+      4. Se chave Gemini disponivel → API em nuvem (leve para PCs fracos)
          Senao → Ollama local com prompt duplo (traduz + corrige EN em uma chamada)
     Retorna: (texto_en_corrigido, texto_pt)
     """
@@ -310,22 +325,35 @@ def _traduzir_sync(texto_ingles: Optional[str] = None, imagem_base64: Optional[s
     # Pre-processador de regras (instantaneo, sem LLM)
     texto_ingles = _pre_processar_ocr_engenharia(texto_ingles)
 
-    # Otimizacao 3: Gemini disponivel → nuvem, zero CPU local
+    # Cache LRU: evita rechamar Ollama/Gemini para o mesmo texto
+    cache_key = hashlib.sha1(f"{OLLAMA_MODEL}:{texto_ingles}".encode()).hexdigest()
+    if cache_key in _cache_traducao:
+        log.info("[Traducao] Cache hit — retornando resultado anterior.")
+        return _cache_traducao[cache_key]
+
+    # Gemini disponivel → nuvem, zero CPU local
     if gemini_api_key:
-        import asyncio as _aio
         try:
-            loop = _aio.new_event_loop()
+            loop = asyncio.new_event_loop()
             en_corrigido, pt = loop.run_until_complete(
                 _traduzir_via_gemini_async(texto_ingles, gemini_api_key)
             )
             loop.close()
             log.info("[Traducao] Concluida via Gemini (nuvem).")
-            return en_corrigido, pt
+            resultado = (en_corrigido, pt)
+            _guardar_cache(cache_key, resultado)
+            return resultado
         except Exception:
             pass  # fallback para Ollama abaixo
 
-    # Otimizacao 2: Prompt unico que traduz E retorna EN corrigido — elimina _limpar_ocr_sync
+    # Ollama local: prompt unico que traduz E retorna EN corrigido
     log.info(f"[Traducao] Processando {len(texto_ingles)} chars com Ollama ({OLLAMA_MODEL})...")
+
+    # num_predict calibrado: ~2.5x o tamanho do input para PT, com teto de 1024
+    n_chars = len(texto_ingles)
+    num_predict_duplo   = min(1024, max(256, int(n_chars * 2.5)))
+    num_predict_simples = min(512,  max(128, int(n_chars * 1.8)))
+
     prompt = f"""Voce eh um tradutor tecnico senior especializado em Engenharia Eletrica, Eletronica e Telecomunicacoes.
 O texto abaixo vem de livro academico escaneado e pode ter erros menores de OCR.
 
@@ -343,7 +371,7 @@ Texto em ingles:
         resposta = ollama.generate(
             model=OLLAMA_MODEL,
             prompt=prompt.strip(),
-            options={"temperature": 0.05, "num_predict": max(512, int(len(texto_ingles) * 3))},
+            options={"temperature": 0.05, "num_predict": num_predict_duplo},
         )
         import json as _json
         raw = resposta["response"].strip()
@@ -352,10 +380,12 @@ Texto em ingles:
         en_corrigido = data.get("en_corrigido", texto_ingles)
         pt = data.get("pt", "")
         log.info("[Traducao] Concluida via Ollama (prompt duplo).")
-        return en_corrigido, pt
+        resultado = (en_corrigido, pt)
+        _guardar_cache(cache_key, resultado)
+        return resultado
     except Exception as exc:
         log.warning(f"[Traducao] JSON falhou ({exc}), usando prompt simples de fallback.")
-        # Fallback: prompt simples sem JSON (compatibilidade com modelos menores)
+        # Fallback: prompt simples sem JSON
         prompt_simples = f"""Traduza o seguinte texto de ingles para portugues do Brasil com rigor tecnico.
 Retorne APENAS a traducao, sem comentarios.
 
@@ -363,9 +393,19 @@ Retorne APENAS a traducao, sem comentarios.
         resposta = ollama.generate(
             model=OLLAMA_MODEL,
             prompt=prompt_simples.strip(),
-            options={"temperature": 0.1, "num_predict": max(256, int(len(texto_ingles) * 2))},
+            options={"temperature": 0.1, "num_predict": num_predict_simples},
         )
-        return texto_ingles, resposta["response"].strip()
+        resultado = (texto_ingles, resposta["response"].strip())
+        _guardar_cache(cache_key, resultado)
+        return resultado
+
+
+def _guardar_cache(key: str, valor: tuple) -> None:
+    """Guarda no cache LRU; descarta o mais antigo se ultrapassar _MAX_CACHE."""
+    if len(_cache_traducao) >= _MAX_CACHE:
+        _cache_traducao.pop(next(iter(_cache_traducao)))
+    _cache_traducao[key] = valor
+
 
 
 def _limpar_ocr_sync(texto_sujo: Optional[str] = None, imagem_base64: Optional[str] = None,

@@ -448,7 +448,8 @@ QWidget* MainWindow::criarAbaChatIA()
     );
     layoutHeader->addWidget(m_comboChatIA);
 
-    m_lblModeloAtivoChat = new QLabel(QString("%1").arg(m_iaModelo), aba);
+    // Label mostra o modelo do provedor selecionado (atualizado depois no carregarConfiguracoes)
+    m_lblModeloAtivoChat = new QLabel(QStringLiteral("—"), aba);
     m_lblModeloAtivoChat->setStyleSheet("color: #64748b; font-size: 10px; font-weight: 500;");
     layoutHeader->addWidget(m_lblModeloAtivoChat, 1);
 
@@ -590,9 +591,11 @@ QWidget* MainWindow::criarAbaConfiguracoes()
 
     m_comboPerfil = new QComboBox(aba);
     m_comboPerfil->setObjectName("comboPerfil");
-    m_comboPerfil->addItem("Basico  — phi3:mini + Whisper tiny.en  (~3 GB RAM)",   "basico");
-    m_comboPerfil->addItem("Medio   — llama3.2:3b + Whisper base.en (~6 GB RAM)",  "medio");
-    m_comboPerfil->addItem("Avancado — llama3 + Whisper base.en     (~12 GB RAM)", "avancado");
+    // Tier 0: tudo na nuvem via chave API cadastrada (zero carga local alem de Tesseract)
+    m_comboPerfil->addItem("Nuvem    — API Gemini/OpenAI  (sem Ollama, requer chave)",  "nuvem");
+    m_comboPerfil->addItem("Basico   — phi3:mini + Whisper tiny.en  (~3 GB RAM)",        "basico");
+    m_comboPerfil->addItem("Medio    — llama3.2:3b + Whisper base.en (~6 GB RAM)",       "medio");
+    m_comboPerfil->addItem("Avancado — llama3 + Whisper base.en     (~12 GB RAM)",       "avancado");
     layout->addWidget(m_comboPerfil);
 
     auto *lblTierInfo = new QLabel(
@@ -1457,24 +1460,28 @@ void MainWindow::onAvaliacaoPronunciaResultado(int nota, const QString &feedback
 
 void MainWindow::onPerfilAlterado(int index)
 {
-    // Define os modelos Ollama e Whisper para cada tier
+    // Tier 0 = Nuvem: toda IA vai pela chave API configurada, sem Ollama
+    // Tier 1 = Basico, Tier 2 = Medio, Tier 3 = Avancado
     struct Tier { const char *ollama; const char *whisper; const char *descricao; };
     static const Tier tiers[] = {
-        { "phi3:mini",  "tiny.en",  "Basico (phi3:mini + tiny.en)" },
-        { "llama3.2:3b","base.en", "Medio (llama3.2:3b + base.en)" },
-        { "llama3",     "base.en", "Avancado (llama3 + base.en)" },
+        { "",            "base.en",  "Nuvem (sem Ollama, usa API cadastrada)" },
+        { "phi3:mini",   "tiny.en",  "Basico (phi3:mini + tiny.en)" },
+        { "llama3.2:3b", "base.en",  "Medio (llama3.2:3b + base.en)" },
+        { "llama3",      "base.en",  "Avancado (llama3 + base.en)" },
     };
-    const int idx = qBound(0, index, 2);
-    m_ollamaModelTier  = tiers[idx].ollama;
+    const int idx = qBound(0, index, 3);
+    m_ollamaModelTier  = tiers[idx].ollama;   // vazio no tier Nuvem
     m_whisperModelTier = tiers[idx].whisper;
 
-    // Salva o tier nos settings para o script de inicializacao ler
     QSettings settings("EnsinadorDeIngles", "LeitorTecnico");
     settings.setValue("tierIndex",        idx);
     settings.setValue("ollamaModelTier",  m_ollamaModelTier);
     settings.setValue("whisperModelTier", m_whisperModelTier);
 
-    appendLog(QString("Perfil alterado para: %1. Reinicie o backend para ter efeito.").arg(tiers[idx].descricao), "info");
+    const QString aviso = (idx == 0)
+        ? QStringLiteral(" — Certifique-se de ter a chave API configurada.")
+        : QStringLiteral(" Reinicie o backend para ter efeito.");
+    appendLog(QString("Perfil alterado para: %1.%2").arg(tiers[idx].descricao, aviso), "info");
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -53,6 +53,11 @@ MainWindow::MainWindow(QWidget *parent)
 
     carregarConfiguracoes();
 
+    // Garante tela cheia e painel fechado sempre ao abrir
+    showMaximized();
+    m_painelDir->setVisible(false);
+    m_actTogglePainel->setChecked(false);
+
     m_net->verificarConexao();
 }
 
@@ -418,12 +423,33 @@ QWidget* MainWindow::criarAbaChatIA()
     layout->setContentsMargins(4, 8, 4, 4);
     layout->setSpacing(6);
 
-    // Barra Superior: Status do Modelo e Atalho para Configurações
+    // Barra Superior: seletor de IA + status + botoes
     auto *layoutHeader = new QHBoxLayout();
     layoutHeader->setSpacing(6);
 
-    m_lblModeloAtivoChat = new QLabel(QString("IA: %1 (%2)").arg(m_iaProvedor.toUpper(), m_iaModelo), aba);
-    m_lblModeloAtivoChat->setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 500;");
+    // Seletor rapido de IA (como o Antigravity)
+    m_comboChatIA = new QComboBox(aba);
+    m_comboChatIA->setObjectName("comboChatIA");
+    m_comboChatIA->setToolTip("Selecionar IA para responder");
+    m_comboChatIA->addItem("Gemini",  "gemini");
+    m_comboChatIA->addItem("Ollama",  "ollama");
+    m_comboChatIA->setStyleSheet(
+        "QComboBox#comboChatIA {"
+        "  background-color: #1c1e24; border: 1px solid #334155;"
+        "  border-radius: 5px; padding: 3px 8px; color: #60a5fa;"
+        "  font-size: 11px; font-weight: 600; min-width: 80px;"
+        "}"
+        "QComboBox#comboChatIA::drop-down { border: none; }"
+        "QComboBox#comboChatIA::down-arrow { image: none; width: 0; }"
+        "QComboBox#comboChatIA QAbstractItemView {"
+        "  background-color: #1c1e24; border: 1px solid #334155;"
+        "  color: #e2e8f0; selection-background-color: #2563eb;"
+        "}"
+    );
+    layoutHeader->addWidget(m_comboChatIA);
+
+    m_lblModeloAtivoChat = new QLabel(QString("%1").arg(m_iaModelo), aba);
+    m_lblModeloAtivoChat->setStyleSheet("color: #64748b; font-size: 10px; font-weight: 500;");
     layoutHeader->addWidget(m_lblModeloAtivoChat, 1);
 
     m_btnConfigurarIA = new QPushButton("Configurar API", aba);
@@ -433,12 +459,12 @@ QWidget* MainWindow::criarAbaChatIA()
 
     m_btnLimparChat = new QPushButton("Limpar", aba);
     m_btnLimparChat->setObjectName("btnSecundario");
-    m_btnLimparChat->setToolTip("Limpar histórico de conversa");
+    m_btnLimparChat->setToolTip("Limpar historico de conversa");
     layoutHeader->addWidget(m_btnLimparChat);
 
     layout->addLayout(layoutHeader);
 
-    // Histórico da Conversa
+    // Historico da Conversa
     m_chatHistorico = new QTextBrowser(aba);
     m_chatHistorico->setObjectName("chatHistorico");
     m_chatHistorico->setOpenExternalLinks(true);
@@ -455,9 +481,9 @@ QWidget* MainWindow::criarAbaChatIA()
     );
     m_chatHistorico->setHtml(
         "<div style='color: #94a3b8; font-size: 13px; line-height: 1.5;'>"
-        "<b style='color: #60a5fa;'>Assistente Técnico</b><br>"
-        "Faça perguntas conceituais ou anexe circuitos para análise da IA.<br><br>"
-        "<b>Instruções:</b><br>"
+        "<b style='color: #60a5fa;'>Assistente Tecnico</b><br>"
+        "Faca perguntas conceituais ou anexe circuitos para analise da IA.<br><br>"
+        "<b>Instrucoes:</b><br>"
         "• <b>Capturar Circuito:</b> Selecione um esquema diretamente no PDF com o mouse.<br>"
         "• <b>Colar Trecho:</b> Insere o texto selecionado na pergunta.<br>"
         "• <b>Configurar API:</b> Insira sua chave Gemini ou ative o modo offline (Ollama)."
@@ -478,7 +504,7 @@ QWidget* MainWindow::criarAbaChatIA()
     m_chatThumbLabel->setStyleSheet("border: 1px solid #475569; border-radius: 4px; background: #0f172a;");
     previewLayout->addWidget(m_chatThumbLabel);
 
-    m_chatThumbTexto = new QLabel("Circuito anexado para análise técnica", m_chatPreviewWidget);
+    m_chatThumbTexto = new QLabel("Circuito anexado para analise tecnica", m_chatPreviewWidget);
     m_chatThumbTexto->setStyleSheet("color: #e2e8f0; font-size: 11px;");
     previewLayout->addWidget(m_chatThumbTexto, 1);
 
@@ -491,7 +517,7 @@ QWidget* MainWindow::criarAbaChatIA()
     m_chatPreviewWidget->setVisible(false);
     layout->addWidget(m_chatPreviewWidget);
 
-    // Barra de Ferramentas / Ações Rápidas
+    // Barra de Ferramentas / Acoes Rapidas
     auto *layoutAcoes = new QHBoxLayout();
     layoutAcoes->setSpacing(6);
 
@@ -512,7 +538,7 @@ QWidget* MainWindow::criarAbaChatIA()
 
     layout->addLayout(layoutAcoes);
 
-    // Campo de Entrada e Botão Enviar
+    // Campo de Entrada e Botao Enviar
     auto *layoutInput = new QHBoxLayout();
     layoutInput->setSpacing(6);
 
@@ -555,18 +581,27 @@ QWidget* MainWindow::criarAbaConfiguracoes()
     auto *aba = new QWidget();
     auto *layout = new QVBoxLayout(aba);
     layout->setContentsMargins(4, 8, 4, 4);
-    layout->setSpacing(8);
+    layout->setSpacing(10);
 
+    // ── Tier de Hardware ──────────────────────────────────────────────────
     auto *lblPerfil = new QLabel("Perfil de Hardware:", aba);
     lblPerfil->setObjectName("lblSecao");
     layout->addWidget(lblPerfil);
 
     m_comboPerfil = new QComboBox(aba);
     m_comboPerfil->setObjectName("comboPerfil");
-    m_comboPerfil->addItem("Econômico / Rápido (Recomendado para PCs modestos)");
-    m_comboPerfil->addItem("Alta Precisão (Recomendado com GPU dedicada)");
+    m_comboPerfil->addItem("Basico  — phi3:mini + Whisper tiny.en  (~3 GB RAM)",   "basico");
+    m_comboPerfil->addItem("Medio   — llama3.2:3b + Whisper base.en (~6 GB RAM)",  "medio");
+    m_comboPerfil->addItem("Avancado — llama3 + Whisper base.en     (~12 GB RAM)", "avancado");
     layout->addWidget(m_comboPerfil);
 
+    auto *lblTierInfo = new QLabel(
+        "<span style='color:#64748b; font-size:10px;'>"
+        "Trocar o perfil requer reiniciar o backend para ter efeito."
+        "</span>", aba);
+    layout->addWidget(lblTierInfo);
+
+    // ── Gerenciamento de Layout ───────────────────────────────────────────
     auto *lblLayout = new QLabel("Gerenciamento de Layout:", aba);
     lblLayout->setObjectName("lblSecao");
     layout->addWidget(lblLayout);
@@ -576,7 +611,7 @@ QWidget* MainWindow::criarAbaConfiguracoes()
     m_btnSalvarLayout->setObjectName("btnSecundario");
     layoutBtnsLayout->addWidget(m_btnSalvarLayout);
 
-    m_btnRestaurarLayout = new QPushButton("Restaurar Padrão", aba);
+    m_btnRestaurarLayout = new QPushButton("Restaurar Padrao", aba);
     m_btnRestaurarLayout->setObjectName("btnSecundario");
     layoutBtnsLayout->addWidget(m_btnRestaurarLayout);
     layout->addLayout(layoutBtnsLayout);
@@ -595,6 +630,7 @@ QWidget* MainWindow::criarAbaConfiguracoes()
     layoutProps->addWidget(m_btnProporcao50);
     layout->addLayout(layoutProps);
 
+    // ── Log ───────────────────────────────────────────────────────────────
     auto *lblLog = new QLabel("Registro de Atividades:", aba);
     lblLog->setObjectName("lblSecao");
     layout->addWidget(lblLog);
@@ -1011,6 +1047,19 @@ void MainWindow::connectSignals()
     connect(m_btnProporcao50,     &QPushButton::clicked, this, [this]() { onAplicarProporcao(50); });
 
     // Configurações
+    // Chat IA selector
+    connect(m_comboChatIA, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) {
+        const QString prov = m_comboChatIA->currentData().toString();
+        m_iaProvedor = prov;
+        if (m_lblModeloAtivoChat) {
+            m_lblModeloAtivoChat->setText(
+                prov == "gemini" ? m_iaModelo : m_ollamaModelTier
+            );
+        }
+        salvarConfiguracoes();
+    });
+
     connect(m_comboPerfil, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onPerfilAlterado);
 
@@ -1108,8 +1157,24 @@ void MainWindow::carregarConfiguracoes()
     if (m_iaModelo.isEmpty() || obsoletos.contains(m_iaModelo)) {
         m_iaModelo = "gemini-3.8-flash";
     }
+
+    // Tier de hardware
+    const int tierIdx = settings.value("tierIndex", 2).toInt(); // default: avancado
+    if (m_comboPerfil && tierIdx >= 0 && tierIdx < m_comboPerfil->count())
+        m_comboPerfil->setCurrentIndex(tierIdx);
+    m_ollamaModelTier = settings.value("ollamaModelTier", "llama3").toString();
+    m_whisperModelTier = settings.value("whisperModelTier", "base.en").toString();
+
+    // Seletor de IA no chat
+    if (m_comboChatIA) {
+        const int iaIdx = m_comboChatIA->findData(m_iaProvedor);
+        if (iaIdx >= 0) m_comboChatIA->setCurrentIndex(iaIdx);
+    }
+
     if (m_lblModeloAtivoChat) {
-        m_lblModeloAtivoChat->setText(QString("IA: %1 (%2)").arg(m_iaProvedor.toUpper(), m_iaModelo));
+        m_lblModeloAtivoChat->setText(
+            m_iaProvedor == "gemini" ? m_iaModelo : m_ollamaModelTier
+        );
     }
 }
 
@@ -1126,6 +1191,9 @@ void MainWindow::salvarConfiguracoes()
     settings.setValue("iaProvedor", m_iaProvedor);
     settings.setValue("iaApiKey", m_iaApiKey);
     settings.setValue("iaModelo", m_iaModelo);
+    settings.setValue("tierIndex",        m_comboPerfil ? m_comboPerfil->currentIndex() : 2);
+    settings.setValue("ollamaModelTier",  m_ollamaModelTier);
+    settings.setValue("whisperModelTier", m_whisperModelTier);
 }
 
 void MainWindow::onSalvarLayout()
@@ -1389,11 +1457,24 @@ void MainWindow::onAvaliacaoPronunciaResultado(int nota, const QString &feedback
 
 void MainWindow::onPerfilAlterado(int index)
 {
-    if (index == 0) {
-        appendLog("Perfil 'Econômico / Rápido' ativado (otimizado para notebooks e CPUs modestas).", "info");
-    } else {
-        appendLog("Perfil 'Alta Precisão' ativado.", "info");
-    }
+    // Define os modelos Ollama e Whisper para cada tier
+    struct Tier { const char *ollama; const char *whisper; const char *descricao; };
+    static const Tier tiers[] = {
+        { "phi3:mini",  "tiny.en",  "Basico (phi3:mini + tiny.en)" },
+        { "llama3.2:3b","base.en", "Medio (llama3.2:3b + base.en)" },
+        { "llama3",     "base.en", "Avancado (llama3 + base.en)" },
+    };
+    const int idx = qBound(0, index, 2);
+    m_ollamaModelTier  = tiers[idx].ollama;
+    m_whisperModelTier = tiers[idx].whisper;
+
+    // Salva o tier nos settings para o script de inicializacao ler
+    QSettings settings("EnsinadorDeIngles", "LeitorTecnico");
+    settings.setValue("tierIndex",        idx);
+    settings.setValue("ollamaModelTier",  m_ollamaModelTier);
+    settings.setValue("whisperModelTier", m_whisperModelTier);
+
+    appendLog(QString("Perfil alterado para: %1. Reinicie o backend para ter efeito.").arg(tiers[idx].descricao), "info");
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1413,6 +1494,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     switch (event->type()) {
     case QEvent::MouseButtonPress: {
         auto *me = static_cast<QMouseEvent*>(event);
+        // Modo de captura (rubber band)
         if (me->button() == Qt::LeftButton && m_modoCaptura) {
             m_rbOrigin = me->pos();
             m_rubberBand->setParent(view->viewport());
@@ -1420,18 +1502,37 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             m_rubberBand->show();
             return true;
         }
+        // Modo pan (mao): clique e segura para arrastar
+        if (me->button() == Qt::LeftButton && !m_modoCaptura) {
+            m_panModo  = true;
+            m_panOrigin = me->pos();
+            view->viewport()->setCursor(Qt::ClosedHandCursor);
+            return true;
+        }
         break;
     }
     case QEvent::MouseMove: {
         auto *me = static_cast<QMouseEvent*>(event);
+        // Arrastar rubber band
         if (m_modoCaptura && m_rubberBand->isVisible()) {
             m_rubberBand->setGeometry(QRect(m_rbOrigin, me->pos()).normalized());
+            return true;
+        }
+        // Arrastar pan
+        if (m_panModo && (me->buttons() & Qt::LeftButton)) {
+            const QPoint delta = me->pos() - m_panOrigin;
+            m_panOrigin = me->pos();
+            auto *hsb = view->horizontalScrollBar();
+            auto *vsb = view->verticalScrollBar();
+            if (hsb) hsb->setValue(hsb->value() - delta.x());
+            if (vsb) vsb->setValue(vsb->value() - delta.y());
             return true;
         }
         break;
     }
     case QEvent::MouseButtonRelease: {
         auto *me = static_cast<QMouseEvent*>(event);
+        // Soltar rubber band
         if (me->button() == Qt::LeftButton && m_modoCaptura && m_rubberBand->isVisible()) {
             const QRect rect = m_rubberBand->geometry();
             m_rubberBand->hide();
@@ -1476,6 +1577,23 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             m_tipoCaptura = ModoCapturaRubberBand::Nenhum;
             return true;
         }
+        // Soltar pan
+        if (me->button() == Qt::LeftButton && m_panModo) {
+            m_panModo = false;
+            view->viewport()->setCursor(Qt::OpenHandCursor);
+            return true;
+        }
+        break;
+    }
+    case QEvent::Enter: {
+        // Cursor de mao aberta quando nao esta capturando
+        if (!m_modoCaptura)
+            view->viewport()->setCursor(Qt::OpenHandCursor);
+        break;
+    }
+    case QEvent::Leave: {
+        if (!m_modoCaptura && !m_panModo)
+            view->viewport()->setCursor(Qt::ArrowCursor);
         break;
     }
     case QEvent::Wheel: {

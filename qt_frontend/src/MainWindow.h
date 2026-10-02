@@ -153,12 +153,14 @@ private:
     QString          m_textoOriginalEn;
     QString          m_textoTraduzidoPt;
 
-    // Chat IA State
     QString          m_chatImagemBase64;
     QJsonArray       m_chatHistoricoJson;
     QString          m_iaProvedor         = "gemini";
     QString          m_iaApiKey;
     QString          m_iaModelo           = "gemini-3.8-flash";
+    QString          m_ollamaModelTier    = "llama3";    // modelo Ollama do tier selecionado
+    QString          m_whisperModelTier   = "base.en";   // modelo Whisper do tier selecionado
+    bool             m_panModo            = false;       // mao de navegacao no PDF
 
     QPoint           m_rbOrigin;
     QPoint           m_panOrigin;
@@ -232,6 +234,7 @@ private:
     QLabel          *m_lblModeloAtivoChat= nullptr;
     QPushButton     *m_btnConfigurarIA   = nullptr;
     QPushButton     *m_btnLimparChat     = nullptr;
+    QComboBox       *m_comboChatIA       = nullptr;  // seletor rapido de IA no chat
 
     // ── Aba 4: Desempenho & Layout ────────────────────────────────────────
     QComboBox       *m_comboPerfil       = nullptr;

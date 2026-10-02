@@ -33,6 +33,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
+#include <QStatusBar>
+#include <cmath>
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Construtor e Inicialização
@@ -43,6 +45,9 @@ MainWindow::MainWindow(QWidget *parent)
 {
     setWindowTitle("Leitor Técnico de Documentos");
     setMinimumSize(960, 640);
+
+    m_timerProgresso = new QTimer(this);
+    connect(m_timerProgresso, &QTimer::timeout, this, &MainWindow::atualizarProgressoPasso);
 
     m_net = new NetworkManager("http://localhost:8000", this);
 
@@ -189,6 +194,27 @@ void MainWindow::setupMenuBar()
     auto *actConfigurarIA = menuConfig->addAction("Chaves de API e IA (Gemini / Ollama)...");
     actConfigurarIA->setShortcut(QKeySequence("Ctrl+Shift+I"));
     connect(actConfigurarIA, &QAction::triggered, this, &MainWindow::onConfigurarIA);
+
+    // ── Indicador de Modelo Ativo e Progresso no Canto Superior Direito ───
+    auto *cornerWidget = new QWidget(this);
+    auto *cornerLayout = new QHBoxLayout(cornerWidget);
+    cornerLayout->setContentsMargins(0, 0, 10, 0);
+    cornerLayout->setSpacing(8);
+
+    m_lblProgressoTopo = new QLabel(cornerWidget);
+    m_lblProgressoTopo->setStyleSheet("color: #38bdf8; font-weight: 700; font-size: 11px;");
+    m_lblProgressoTopo->setVisible(false);
+    cornerLayout->addWidget(m_lblProgressoTopo);
+
+    m_badgeModeloAtivo = new QLabel("Tradução: —", cornerWidget);
+    m_badgeModeloAtivo->setObjectName("badgeModeloAtivo");
+    m_badgeModeloAtivo->setStyleSheet(
+        "background-color: #1e2025; color: #cbd5e1; border: 1px solid #2e323b; "
+        "border-radius: 4px; padding: 2px 10px; font-size: 11px; font-weight: 600;"
+    );
+    cornerLayout->addWidget(m_badgeModeloAtivo);
+
+    menuBar->setCornerWidget(cornerWidget, Qt::TopRightCorner);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -267,6 +293,18 @@ void MainWindow::setupUi()
 
     m_splitter->setStretchFactor(0, 75);
     m_splitter->setStretchFactor(1, 25);
+
+    // ── Barra de Status Inferior Minimalista ──────────────────────────────
+    auto *bar = statusBar();
+    bar->setStyleSheet("QStatusBar { background-color: #16171a; border-top: 1px solid #27282d; color: #94a3b8; font-size: 11px; padding: 2px 8px; }");
+
+    m_lblStatusGeral = new QLabel("Pronto", bar);
+    m_lblStatusGeral->setStyleSheet("color: #64748b; font-size: 11px;");
+    bar->addWidget(m_lblStatusGeral, 1);
+
+    m_lblProgressoNumerico = new QLabel("", bar);
+    m_lblProgressoNumerico->setStyleSheet("color: #38bdf8; font-weight: 600; font-size: 11px; margin-right: 12px;");
+    bar->addPermanentWidget(m_lblProgressoNumerico);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1050,16 +1088,23 @@ void MainWindow::connectSignals()
     connect(m_btnProporcao50,     &QPushButton::clicked, this, [this]() { onAplicarProporcao(50); });
 
     // Configurações
-    // Chat IA selector
     connect(m_comboChatIA, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int) {
         const QString prov = m_comboChatIA->currentData().toString();
         m_iaProvedor = prov;
         if (m_lblModeloAtivoChat) {
-            m_lblModeloAtivoChat->setText(
-                prov == "gemini" ? m_iaModelo : m_ollamaModelTier
-            );
+            if (prov == "gemini") {
+                if (m_iaModelo.isEmpty() || m_iaModelo.contains("llama") || m_iaModelo.contains("phi")) {
+                    m_iaModelo = "gemini-3.8-flash";
+                }
+                m_lblModeloAtivoChat->setText(m_iaModelo);
+            } else {
+                m_lblModeloAtivoChat->setText(
+                    m_ollamaModelTier.isEmpty() ? "llama3" : m_ollamaModelTier
+                );
+            }
         }
+        atualizarBadgeModeloAtivo();
         salvarConfiguracoes();
     });
 
@@ -1174,11 +1219,23 @@ void MainWindow::carregarConfiguracoes()
         if (iaIdx >= 0) m_comboChatIA->setCurrentIndex(iaIdx);
     }
 
-    if (m_lblModeloAtivoChat) {
-        m_lblModeloAtivoChat->setText(
-            m_iaProvedor == "gemini" ? m_iaModelo : m_ollamaModelTier
-        );
+    if (m_iaProvedor == "gemini") {
+        if (m_iaModelo.isEmpty() || m_iaModelo.contains("llama") || m_iaModelo.contains("phi")) {
+            m_iaModelo = "gemini-3.8-flash";
+        }
     }
+
+    if (m_lblModeloAtivoChat) {
+        if (m_iaProvedor == "gemini") {
+            m_lblModeloAtivoChat->setText(m_iaModelo);
+        } else {
+            m_lblModeloAtivoChat->setText(
+                m_ollamaModelTier.isEmpty() ? "llama3" : m_ollamaModelTier
+            );
+        }
+    }
+
+    atualizarBadgeModeloAtivo();
 }
 
 void MainWindow::salvarConfiguracoes()
@@ -1300,14 +1357,20 @@ void MainWindow::onToggleModoCaptura(bool ativo)
     m_btnModoCaptura->setChecked(ativo);
     if (ativo) {
         m_tipoCaptura = ModoCapturaRubberBand::Traducao;
+    } else {
+        if (m_rubberBand && m_rubberBand->isVisible()) {
+            m_rubberBand->hide();
+        }
+        m_rbOrigin = QPoint();
+        m_tipoCaptura = ModoCapturaRubberBand::Nenhum;
     }
 
-    const auto cursor = ativo ? Qt::CrossCursor : Qt::ArrowCursor;
+    const auto cursor = ativo ? Qt::CrossCursor : Qt::OpenHandCursor;
     m_pdfView->viewport()->setCursor(cursor);
     m_pdfView2->viewport()->setCursor(cursor);
 
     if (ativo) {
-        appendLog("Modo de seleção ativado: arraste o mouse sobre o parágrafo.");
+        appendLog("Modo de seleção ativado: arraste sobre o parágrafo (Esc para cancelar).");
     }
 }
 
@@ -1482,6 +1545,58 @@ void MainWindow::onPerfilAlterado(int index)
         ? QStringLiteral(" — Certifique-se de ter a chave API configurada.")
         : QStringLiteral(" Reinicie o backend para ter efeito.");
     appendLog(QString("Perfil alterado para: %1.%2").arg(tiers[idx].descricao, aviso), "info");
+
+    if (m_lblModeloAtivoChat && m_iaProvedor == "ollama") {
+        m_lblModeloAtivoChat->setText(m_ollamaModelTier.isEmpty() ? "llama3" : m_ollamaModelTier);
+    }
+    atualizarBadgeModeloAtivo();
+}
+
+void MainWindow::atualizarBadgeModeloAtivo()
+{
+    if (!m_badgeModeloAtivo) return;
+
+    QString modeloNome;
+    const bool usaGemini = (m_iaProvedor == "gemini" && !m_iaApiKey.trimmed().isEmpty());
+
+    if (usaGemini) {
+        modeloNome = "Gemini (Nuvem)";
+    } else {
+        const int tierIdx = m_comboPerfil ? m_comboPerfil->currentIndex() : 2;
+        if (tierIdx == 0) {
+            modeloNome = "Nuvem (Chave API necessária)";
+        } else if (!m_ollamaModelTier.isEmpty()) {
+            modeloNome = QString("%1 (Local)").arg(m_ollamaModelTier);
+        } else {
+            modeloNome = "Ollama (Local)";
+        }
+    }
+
+    m_badgeModeloAtivo->setText(QString("Tradução: %1").arg(modeloNome));
+    m_badgeModeloAtivo->setToolTip(
+        QString("Motor ativo para tradução técnica e OCR:\n%1\n(Altere nas abas Desempenho & Layout ou Configurar API)").arg(modeloNome)
+    );
+}
+
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+    if (event->key() == Qt::Key_Escape) {
+        if (m_rubberBand && m_rubberBand->isVisible()) {
+            m_rubberBand->hide();
+            m_rbOrigin = QPoint();
+            appendLog("Desenho da seleção cancelado. Selecione novamente quando desejar.", "info");
+            event->accept();
+            return;
+        }
+        if (m_modoCaptura) {
+            onToggleModoCaptura(false);
+            m_tipoCaptura = ModoCapturaRubberBand::Nenhum;
+            appendLog("Modo de seleção desativado.", "info");
+            event->accept();
+            return;
+        }
+    }
+    QMainWindow::keyPressEvent(event);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1499,6 +1614,24 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     m_activePdfView = view;
 
     switch (event->type()) {
+    case QEvent::KeyPress: {
+        auto *ke = static_cast<QKeyEvent*>(event);
+        if (ke->key() == Qt::Key_Escape) {
+            if (m_rubberBand && m_rubberBand->isVisible()) {
+                m_rubberBand->hide();
+                m_rbOrigin = QPoint();
+                appendLog("Desenho da seleção cancelado. Selecione novamente quando desejar.", "info");
+                return true;
+            }
+            if (m_modoCaptura) {
+                onToggleModoCaptura(false);
+                m_tipoCaptura = ModoCapturaRubberBand::Nenhum;
+                appendLog("Modo de seleção desativado.", "info");
+                return true;
+            }
+        }
+        break;
+    }
     case QEvent::MouseButtonPress: {
         auto *me = static_cast<QMouseEvent*>(event);
         // Modo de captura (rubber band)
@@ -1803,11 +1936,81 @@ void MainWindow::atualizarLabelZoom()
 // Respostas de Rede e Registro
 // ═════════════════════════════════════════════════════════════════════════════
 
+void MainWindow::iniciarProgresso(const QString &descricao, int duracaoEstimadaMs)
+{
+    m_operacaoAtual = descricao;
+    m_tempoDecorridoMs = 0;
+    m_duracaoEstimadaMs = qMax(600, duracaoEstimadaMs);
+    m_progressoPercentual = 5;
+
+    const QString texto = QString("%1: %2%").arg(m_operacaoAtual).arg(m_progressoPercentual);
+    if (m_lblProgressoNumerico) {
+        m_lblProgressoNumerico->setText(texto);
+    }
+    if (m_lblProgressoTopo) {
+        m_lblProgressoTopo->setText(QString("%1%").arg(m_progressoPercentual));
+        m_lblProgressoTopo->setVisible(true);
+    }
+    if (m_timerProgresso) {
+        m_timerProgresso->start(40);
+    }
+}
+
+void MainWindow::atualizarProgressoPasso()
+{
+    m_tempoDecorridoMs += 40;
+    double t = double(m_tempoDecorridoMs) / double(m_duracaoEstimadaMs);
+    if (t > 1.0) t = 1.0 + (t - 1.0) * 0.15;
+
+    // Curva assintótica que desacelera perto de 96% aguardando a resposta real
+    int pct = qBound(5, int((1.0 - std::exp(-2.5 * t)) * 105.0), 96);
+    m_progressoPercentual = pct;
+
+    const QString texto = QString("%1: %2%").arg(m_operacaoAtual).arg(m_progressoPercentual);
+    if (m_lblProgressoNumerico) {
+        m_lblProgressoNumerico->setText(texto);
+    }
+    if (m_lblProgressoTopo) {
+        m_lblProgressoTopo->setText(QString("%1%").arg(m_progressoPercentual));
+    }
+}
+
+void MainWindow::finalizarProgresso(bool sucesso)
+{
+    if (m_timerProgresso) {
+        m_timerProgresso->stop();
+    }
+    m_progressoPercentual = sucesso ? 100 : m_progressoPercentual;
+
+    if (m_lblProgressoNumerico) {
+        if (sucesso) {
+            m_lblProgressoNumerico->setText(QString("%1: 100%").arg(m_operacaoAtual));
+        } else {
+            m_lblProgressoNumerico->setText(QString("%1: Falha").arg(m_operacaoAtual));
+        }
+    }
+    if (m_lblProgressoTopo) {
+        m_lblProgressoTopo->setText(sucesso ? "100%" : "Erro");
+    }
+
+    QTimer::singleShot(sucesso ? 1200 : 2500, this, [this]() {
+        if (m_timerProgresso && !m_timerProgresso->isActive()) {
+            if (m_lblProgressoNumerico) m_lblProgressoNumerico->setText("");
+            if (m_lblProgressoTopo) {
+                m_lblProgressoTopo->setText("");
+                m_lblProgressoTopo->setVisible(false);
+            }
+        }
+    });
+}
+
 void MainWindow::onServidorOnline(bool online)
 {
     if (online) {
+        if (m_lblStatusGeral) m_lblStatusGeral->setText("Motor de IA ativo");
         m_lblStatus->setText("Motor de IA ativo");
     } else {
+        if (m_lblStatusGeral) m_lblStatusGeral->setText("Motor offline (inicie ./iniciar_backend.sh)");
         m_lblStatus->setText("Motor offline (inicie ./iniciar_backend.sh)");
     }
 }
@@ -1816,18 +2019,29 @@ void MainWindow::onRequisicaoIniciada(const QString &endpoint)
 {
     if (endpoint == "/traduzir") {
         setButtonBusy(m_btnTraduzir, true);
+        if (m_lblStatusGeral) m_lblStatusGeral->setText("Traduzindo seleção técnica...");
         m_lblStatus->setText("Traduzindo...");
+        const int tempoEst = (m_iaProvedor == "gemini") ? 3200 : 1800;
+        iniciarProgresso("Tradução", tempoEst);
     } else if (endpoint == "/falar") {
         setButtonBusy(m_btnOuvir, true);
+        if (m_lblStatusGeral) m_lblStatusGeral->setText("Gerando áudio da fala...");
         m_lblStatus->setText("Gerando áudio da fala...");
+        iniciarProgresso("Voz", 1200);
     } else if (endpoint.startsWith("/parar_gravacao")) {
         setButtonBusy(m_btnGravar, true);
+        if (m_lblStatusGeral) m_lblStatusGeral->setText("Transcrevendo com Whisper...");
         m_lblStatus->setText("Transcrevendo com Whisper...");
+        iniciarProgresso("Transcrição", 1500);
     } else if (endpoint == "/avaliar_pronuncia") {
+        if (m_lblStatusGeral) m_lblStatusGeral->setText("Analisando pronúncia técnica...");
         m_lblStatus->setText("Analisando pronúncia...");
+        iniciarProgresso("Avaliação", 1800);
     } else if (endpoint == "/chat_ia") {
         setButtonBusy(m_btnChatEnviar, true);
+        if (m_lblStatusGeral) m_lblStatusGeral->setText("Consultando Assistente IA...");
         m_lblStatus->setText("Consultando Assistente IA...");
+        iniciarProgresso("Assistente", 2800);
     }
 }
 
@@ -1837,7 +2051,10 @@ void MainWindow::onRequisicaoConcluida(const QString &endpoint)
     if (endpoint == "/falar")    setButtonBusy(m_btnOuvir, false);
     if (endpoint.startsWith("/parar_gravacao")) setButtonBusy(m_btnGravar, false);
     if (endpoint == "/chat_ia")  setButtonBusy(m_btnChatEnviar, false);
+
+    if (m_lblStatusGeral) m_lblStatusGeral->setText("Pronto");
     m_lblStatus->setText("Pronto");
+    finalizarProgresso(true);
 }
 
 void MainWindow::onErroRequisicao(const QString &endpoint, const QString &mensagem)
@@ -1860,8 +2077,10 @@ void MainWindow::onErroRequisicao(const QString &endpoint, const QString &mensag
             m_chatHistorico->verticalScrollBar()->setValue(m_chatHistorico->verticalScrollBar()->maximum());
         }
     }
+    if (m_lblStatusGeral) m_lblStatusGeral->setText("Falha na operação");
     m_lblStatus->setText("Falha na operação");
     appendLog("Erro em " + endpoint + ": " + mensagem, "error");
+    finalizarProgresso(false);
 }
 
 void MainWindow::onLimparOcrResultado(const QString &texto)
@@ -2145,9 +2364,14 @@ void MainWindow::onConfigurarIA()
         salvarConfiguracoes();
 
         if (m_lblModeloAtivoChat) {
-            m_lblModeloAtivoChat->setText(QString("IA: %1 (%2)").arg(m_iaProvedor.toUpper(), m_iaModelo));
+            m_lblModeloAtivoChat->setText(m_iaModelo);
         }
-        appendLog("Configuracoes de IA salvas.", "success");
+        if (m_comboChatIA) {
+            const int idx = m_comboChatIA->findData(m_iaProvedor);
+            if (idx >= 0) m_comboChatIA->setCurrentIndex(idx);
+        }
+        atualizarBadgeModeloAtivo();
+        appendLog("Configurações de IA salvas.", "success");
     }
 }
 

@@ -25,6 +25,8 @@
 #include <QProgressBar>
 #include <QJsonArray>
 #include <QTextBrowser>
+#include <QKeyEvent>
+#include <QTimer>
 
 class NetworkManager;
 
@@ -49,6 +51,7 @@ public:
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
 
 private slots:
@@ -245,5 +248,21 @@ private:
     QPushButton     *m_btnProporcao50    = nullptr;
     QTextEdit       *m_logBox            = nullptr;
     QLabel          *m_lblStatus         = nullptr;
+
+    // ── Badge de Modelo e Progresso Numérico Minimalista ─────────────────
+    void atualizarBadgeModeloAtivo();
+    void iniciarProgresso(const QString &descricao, int duracaoEstimadaMs = 2000);
+    void atualizarProgressoPasso();
+    void finalizarProgresso(bool sucesso = true);
+
+    QLabel          *m_badgeModeloAtivo     = nullptr;
+    QLabel          *m_lblProgressoTopo     = nullptr;
+    QLabel          *m_lblProgressoNumerico = nullptr;
+    QLabel          *m_lblStatusGeral       = nullptr;
+    QTimer          *m_timerProgresso       = nullptr;
+    int              m_progressoPercentual  = 0;
+    int              m_duracaoEstimadaMs    = 2000;
+    int              m_tempoDecorridoMs     = 0;
+    QString          m_operacaoAtual;
 };
 

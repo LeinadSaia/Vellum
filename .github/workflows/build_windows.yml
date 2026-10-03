@@ -47,7 +47,10 @@ jobs:
           cmake --build build_windows --config Release --parallel
 
       - name: Setup Inno Setup
-        uses: fibrous/install-inno-setup@v1
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress
+          echo "C:\Program Files (x86)\Inno Setup 6" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Package Release Directory and Generate Installer
         shell: cmd
@@ -55,7 +58,11 @@ jobs:
           mkdir release_windows
           mkdir dist_installer
 
-          copy /y "build_windows\Release\Vellum.exe" "release_windows\Vellum.exe"
+          if exist "build_windows\Release\Vellum.exe" (
+              copy /y "build_windows\Release\Vellum.exe" "release_windows\Vellum.exe"
+          ) else (
+              copy /y "build_windows\Vellum.exe" "release_windows\Vellum.exe"
+          )
           copy /y "qt_frontend\resources\app_icon.ico" "release_windows\app_icon.ico"
           copy /y "download_models.bat" "release_windows\download_models.bat"
 
@@ -65,7 +72,12 @@ jobs:
           move "temp_dist\vellum_backend" "release_windows\backend"
           rmdir /s /q "temp_dist"
 
-          iscc installer_windows.iss
+          where iscc >nul 2>nul
+          if %errorlevel% equ 0 (
+              iscc installer_windows.iss
+          ) else (
+              "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer_windows.iss
+          )
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

@@ -102,8 +102,8 @@ begin
     // Pergunta educadamente se deseja remover configurações salvas no registro
     if MsgBox('Deseja também remover as preferências e dados do Vellum salvos no seu computador para uma limpeza 100% completa?', mbConfirmation, MB_YESNO) = IDYES then
     begin
-      RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Vellum');
-      RegDeleteKeyIncludingSubkeys(HKCU, 'Software\EnsinadorDeIngles');
+      RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, 'Software\Vellum');
+      RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, 'Software\EnsinadorDeIngles');
       ConfigDir := ExpandConstant('{userappdata}\Vellum');
       if DirExists(ConfigDir) then
         DelTree(ConfigDir, True, True, True);

@@ -101,7 +101,10 @@ jobs:
               throw "Inno Setup compiler (ISCC.exe) not found!"
           }
           Write-Host "Compilando com Inno Setup em: $iscc"
-          & $iscc installer_windows.iss
+          & $iscc /Q- installer_windows.iss
+          if ($LASTEXITCODE -ne 0) {
+              throw "ISCC compilation failed with code $LASTEXITCODE"
+          }
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

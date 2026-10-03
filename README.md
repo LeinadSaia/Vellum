@@ -53,6 +53,8 @@ O aplicativo base (Frontend C++ compilado + Backend Python) ocupa apenas **~45 M
 | **Apenas 1 Modelo Local (Avançado)** | `llama3:8b` + `small.en` | **~5.2 GB** | **~10 GB** | PCs de alto desempenho com 16 GB+ de RAM ou placa de vídeo NVIDIA/AMD dedicada |
 | **Todos os Modelos Instalados** | `phi3:mini` + `llama3.2:3b` + `llama3:8b` + todos os Whisper | **~9.6 GB** | **~180 MB a 10 GB** *(varia pelo tier ativo)* | Desenvolvedores ou quem deseja alternar livremente entre todos os modos offline |
 
+> **Pré-requisito para Modelos Locais (Ollama)**: Os modelos de reconhecimento de fala Whisper (tiny.en, base.en, small.en) são baixados diretamente e funcionam de forma autônoma. Já os modelos de Inteligência Artificial local (phi3:mini, llama3.2:3b e llama3:8b) rodam através do servidor Ollama. Portanto, o download e a execução desses modelos de IA só ocorrerão se você tiver o Ollama previamente instalado no seu computador (disponível gratuitamente em https://ollama.com). Se o Ollama não estiver instalado, o instalador ignorará esses downloads e o Vellum funcionará normalmente no modo Nuvem (Gemini).
+
 > **Degradação Graciosa (Graceful Degradation)**: Se você não tiver o Ollama ou o Whisper instalados, o Vellum opera perfeitamente no modo **Nuvem (Gemini)** sem travar ou emitir erros de inicialização.
 
 ---
@@ -120,7 +122,9 @@ Baixe a versão executável disponível na aba [Releases](https://github.com/thn
 - Atalhos na Área de Trabalho e no Menu Iniciar.
 - Opção de associar o Vellum para abrir arquivos `.pdf` com dois cliques.
 - Backend em segundo plano 100% invisível (sem janelas pretas de console).
-- Suporte a seleção modular de modelos durante a instalação.
+- Suporte a seleção modular de modelos durante a instalação (lembre-se: para selecionar modelos de IA Ollama, é necessário ter o Ollama instalado no computador).
+
+> **Aviso sobre o Windows SmartScreen**: Como o Vellum é um projeto de código aberto recém-compilado e distribuído de forma independente (sem certificado comercial de assinatura de código pago), o Windows pode exibir a tela azul "O Windows protegeu o seu computador". Trata-se de um comportamento padrão do sistema para novos binários sem reputação acumulada. Para prosseguir normalmente, clique em **"Mais informações"** e depois no botão **"Executar assim mesmo"**.
 
 #### Opção B: Executar via Script
 Se clonou o código-fonte no Windows:

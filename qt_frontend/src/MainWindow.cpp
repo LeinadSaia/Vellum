@@ -1459,13 +1459,21 @@ void MainWindow::connectSignals()
         m_bloquearSyncPagina = false;
     });
 
-    // Proteção de salto indevido de página durante redimensionamento do painel/splitter
+    // Proteção de salto indevido de página durante redimensionamento do painel/splitter/janela
     m_timerDebounceResize = new QTimer(this);
     m_timerDebounceResize->setSingleShot(true);
     connect(m_timerDebounceResize, &QTimer::timeout, this, [this]() {
         if (m_pdfDoc && m_pdfDoc->pageCount() > 0 && m_paginaSalvaResize >= 0) {
-            m_pdfView->pageNavigator()->jump(m_paginaSalvaResize, QPointF(0, 0), 0);
-            m_paginaAtual = m_paginaSalvaResize;
+            const int total = m_pdfDoc->pageCount();
+            const int pagFoco = qBound(0, m_paginaSalvaResize, total - 1);
+            if (m_modoVis == ModoVisualizacao::Continuo) {
+                const int y = calcularScrollVerticalParaPagina(pagFoco, m_pdfView->zoomFactor());
+                if (m_pdfView->verticalScrollBar()) {
+                    m_pdfView->verticalScrollBar()->setValue(y);
+                }
+            }
+            m_pdfView->pageNavigator()->jump(pagFoco, QPointF(0, 0), 0);
+            m_paginaAtual = pagFoco;
             atualizarInfoNavegacao();
         }
         m_bloquearSyncPagina = false;
@@ -2067,6 +2075,9 @@ void MainWindow::atualizarBadgeModeloAtivo()
 
 void MainWindow::onToggleTelaCheia()
 {
+    const int pagSalva = m_paginaAtual;
+    m_bloquearSyncPagina = true;
+
     const bool paraTelaCheia = !isFullScreen();
     if (paraTelaCheia) {
         m_barraVisPreviaVisivel = m_barraVis ? m_barraVis->isVisible() : true;
@@ -2079,6 +2090,36 @@ void MainWindow::onToggleTelaCheia()
         menuBar()->setVisible(true);
         if (m_barraVis) m_barraVis->setVisible(m_barraVisPreviaVisivel);
         appendLog("Modo Tela Cheia desativado: barras superiores restauradas.", "info");
+    }
+
+    // Restaura a página e a rolagem vertical após o recálculo do layout da tela cheia
+    QTimer::singleShot(150, this, [this, pagSalva]() {
+        if (m_pdfDoc && m_pdfDoc->pageCount() > 0) {
+            const int total = m_pdfDoc->pageCount();
+            const int pagFoco = qBound(0, pagSalva, total - 1);
+            if (m_modoVis == ModoVisualizacao::Continuo) {
+                const int y = calcularScrollVerticalParaPagina(pagFoco, m_pdfView->zoomFactor());
+                if (m_pdfView->verticalScrollBar()) {
+                    m_pdfView->verticalScrollBar()->setValue(y);
+                }
+            }
+            m_pdfView->pageNavigator()->jump(pagFoco, QPointF(0, 0), 0);
+            m_paginaAtual = pagFoco;
+            atualizarInfoNavegacao();
+        }
+        m_bloquearSyncPagina = false;
+    });
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    if (!m_bloquearSyncPagina && m_pdfDoc && m_pdfDoc->pageCount() > 0) {
+        m_paginaSalvaResize = m_paginaAtual;
+        m_bloquearSyncPagina = true;
+    }
+    QMainWindow::resizeEvent(event);
+    if (m_timerDebounceResize) {
+        m_timerDebounceResize->start(150);
     }
 }
 

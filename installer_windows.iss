@@ -72,9 +72,9 @@ Name: "core";          Description: "Núcleo do Vellum e Backend (Obrigatório)"
 Name: "whisper_base";  Description: "Reconhecimento de Voz Whisper base.en (~139 MB) [Recomendado]"; Types: recommended full custom
 Name: "tesseract";     Description: "OCR Tesseract em Inglês e Português (~60 MB) [Necessário para seleção por retângulo]"; Types: recommended full custom
 Name: "whisper_tiny";  Description: "Reconhecimento de Voz Whisper tiny.en (~73 MB) [Ultrarrápido]"; Types: recommended full custom
-Name: "ia_phi3";       Description: "IA Offline Básica — phi3:mini (~2.2 GB) [Opcional - Requer Ollama]"; Types: full
-Name: "ia_llama32";    Description: "IA Offline Equilibrada — llama3.2:3b (~2.0 GB) [Opcional - Requer Ollama]"; Types: full
-Name: "ia_llama3";     Description: "IA Offline Avançada — llama3:8b (~4.7 GB) [Opcional - Requer Ollama]"; Types: full
+Name: "ia_phi3";       Description: "IA Offline Básica — phi3:mini (~2.2 GB) [Opcional - Requer Ollama instalado no PC]"; Types: full
+Name: "ia_llama32";    Description: "IA Offline Equilibrada — llama3.2:3b (~2.0 GB) [Opcional - Requer Ollama instalado no PC]"; Types: full
+Name: "ia_llama3";     Description: "IA Offline Avançada — llama3:8b (~4.7 GB) [Opcional - Requer Ollama instalado no PC]"; Types: full
 
 [Tasks]
 Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDescription: "Atalhos Adicionais:"

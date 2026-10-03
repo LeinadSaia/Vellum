@@ -26,6 +26,7 @@
 #include <QJsonArray>
 #include <QTextBrowser>
 #include <QKeyEvent>
+#include <QResizeEvent>
 #include <QTimer>
 #include <QProcess>
 #include <QDragEnterEvent>
@@ -58,6 +59,7 @@ public:
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;

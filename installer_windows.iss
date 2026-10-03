@@ -1,12 +1,12 @@
 ; ==============================================================================
 ;   Vellum - Script Inno Setup para Instalador Windows (.exe)
-;   Gera o instalador único Vellum-Setup-v1.0.0.exe
+;   Gera o instalador modular Vellum-Setup-Windows-v1.0.0.exe
 ; ==============================================================================
 
 #define MyAppName "Vellum"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "Vellum Team"
-#define MyAppURL "https://github.com"
+#define MyAppURL "https://github.com/thnsm/App-de-tradu-o-e-leitura"
 #define MyAppExeName "Vellum.exe"
 
 [Setup]
@@ -35,14 +35,28 @@ PrivilegesRequiredOverridesAllowed=dialog
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Types]
+Name: "compact"; Description: "Instalação Nuvem / Rápida (~45 MB) — Mais leve e recomendada"; Flags: iscustom
+Name: "full";    Description: "Instalação Completa (Nuvem + Todos os Modelos Locais)"
+Name: "custom";  Description: "Instalação Personalizada (Escolha seus modelos)"
+
+[Components]
+Name: "core";          Description: "Núcleo do Vellum e Backend (Obrigatório)"; Types: compact full custom; Flags: fixed
+Name: "ia_phi3";       Description: "IA Offline Básica — phi3:mini (~2.2 GB) [Requer Ollama]"; Types: full custom; Flags: unchecked
+Name: "ia_llama32";    Description: "IA Offline Equilibrada — llama3.2:3b (~2.0 GB) [Requer Ollama]"; Types: full custom; Flags: unchecked
+Name: "ia_llama3";     Description: "IA Offline Avançada — llama3:8b (~4.7 GB) [Requer Ollama]"; Types: full custom; Flags: unchecked
+Name: "whisper_tiny";  Description: "Modelo de Voz Whisper tiny.en (~73 MB) [Offline]"; Types: full custom; Flags: unchecked
+Name: "whisper_base";  Description: "Modelo de Voz Whisper base.en (~139 MB) [Offline]"; Types: full custom; Flags: unchecked
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "associatepdf"; Description: "Associar o Vellum como leitor para arquivos PDF (.pdf)"; GroupDescription: "Associações de Arquivo:"; Flags: unchecked
+Name: "associatepdf"; Description: "Associar o Vellum como leitor padrão para arquivos PDF (.pdf)"; GroupDescription: "Associações de Arquivo:"; Flags: unchecked
 
 [Files]
 ; Binário principal e DLLs coletadas pelo windeployqt
 Source: "release_windows\Vellum.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "release_windows\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "Vellum.exe"
+Source: "download_models.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app_icon.ico"
@@ -57,4 +71,12 @@ Root: HKA; Subkey: "Software\Classes\Vellum.PDF\DefaultIcon"; ValueType: string;
 Root: HKA; Subkey: "Software\Classes\Vellum.PDF\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associatepdf
 
 [Run]
+; Download dos modelos opcionais selecionados pelo usuário
+Filename: "{app}\download_models.bat"; Parameters: "/whisper-tiny"; Components: whisper_tiny; StatusMsg: "Baixando modelo Whisper tiny.en (73 MB)..."; Flags: runhidden
+Filename: "{app}\download_models.bat"; Parameters: "/whisper-base"; Components: whisper_base; StatusMsg: "Baixando modelo Whisper base.en (139 MB)..."; Flags: runhidden
+Filename: "{app}\download_models.bat"; Parameters: "/phi3"; Components: ia_phi3; StatusMsg: "Baixando modelo phi3:mini via Ollama..."; Flags: runhidden
+Filename: "{app}\download_models.bat"; Parameters: "/llama32"; Components: ia_llama32; StatusMsg: "Baixando modelo llama3.2:3b via Ollama..."; Flags: runhidden
+Filename: "{app}\download_models.bat"; Parameters: "/llama3"; Components: ia_llama3; StatusMsg: "Baixando modelo llama3:8b via Ollama..."; Flags: runhidden
+
+; Iniciar o aplicativo ao finalizar
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent

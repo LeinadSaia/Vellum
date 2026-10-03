@@ -31,6 +31,12 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 
+; Configurações do Desinstalador (Limpo, Fácil e Amigável)
+UninstallDisplayName=Desinstalar Vellum
+UninstallDisplayIcon={app}\app_icon.ico
+CloseApplications=yes
+RestartApplications=no
+
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -60,7 +66,7 @@ Source: "download_models.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app_icon.ico"
-Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
+Name: "{group}\Desinstalar Vellum"; Filename: "{uninstallexe}"; IconFilename: "{app}\app_icon.ico"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app_icon.ico"; Tasks: desktopicon
 
 [Registry]
@@ -70,13 +76,37 @@ Root: HKA; Subkey: "Software\Classes\Vellum.PDF"; ValueType: string; ValueName: 
 Root: HKA; Subkey: "Software\Classes\Vellum.PDF\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associatepdf
 Root: HKA; Subkey: "Software\Classes\Vellum.PDF\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associatepdf
 
+[UninstallDelete]
+; Garante remoção completa de quaisquer arquivos residuais gerados durante o uso
+Type: filesandordirs; Name: "{app}\backend"
+Type: filesandordirs; Name: "{app}"
+
 [Run]
 ; Download dos modelos opcionais selecionados pelo usuário
-Filename: "{app}\download_models.bat"; Parameters: "/whisper-tiny"; Components: whisper_tiny; StatusMsg: "Baixando modelo Whisper tiny.en (73 MB)..."; Flags: runhidden
 Filename: "{app}\download_models.bat"; Parameters: "/whisper-base"; Components: whisper_base; StatusMsg: "Baixando modelo Whisper base.en (139 MB)..."; Flags: runhidden
+Filename: "{app}\download_models.bat"; Parameters: "/whisper-tiny"; Components: whisper_tiny; StatusMsg: "Baixando modelo Whisper tiny.en (73 MB)..."; Flags: runhidden
 Filename: "{app}\download_models.bat"; Parameters: "/phi3"; Components: ia_phi3; StatusMsg: "Baixando modelo phi3:mini via Ollama..."; Flags: runhidden
 Filename: "{app}\download_models.bat"; Parameters: "/llama32"; Components: ia_llama32; StatusMsg: "Baixando modelo llama3.2:3b via Ollama..."; Flags: runhidden
 Filename: "{app}\download_models.bat"; Parameters: "/llama3"; Components: ia_llama3; StatusMsg: "Baixando modelo llama3:8b via Ollama..."; Flags: runhidden
 
 ; Iniciar o aplicativo ao finalizar
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ConfigDir: String;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    // Pergunta educadamente se deseja remover configurações salvas no registro
+    if MsgBox('Deseja também remover as preferências e dados do Vellum salvos no seu computador para uma limpeza 100% completa?', mbConfirmation, MB_YESNO) = IDYES then
+    begin
+      RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Vellum');
+      RegDeleteKeyIncludingSubkeys(HKCU, 'Software\EnsinadorDeIngles');
+      ConfigDir := ExpandConstant('{userappdata}\Vellum');
+      if DirExists(ConfigDir) then
+        DelTree(ConfigDir, True, True, True);
+    end;
+  end;
+end;

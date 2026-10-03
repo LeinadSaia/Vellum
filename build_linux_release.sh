@@ -34,6 +34,7 @@ cp "requirements.txt" "${RELEASE_DIR}/requirements.txt"
 cp "iniciar_tudo.sh" "${RELEASE_DIR}/iniciar_tudo.sh"
 cp "iniciar_backend.sh" "${RELEASE_DIR}/iniciar_backend.sh"
 cp "install_linux.sh" "${RELEASE_DIR}/install_linux.sh"
+cp "uninstall_linux.sh" "${RELEASE_DIR}/uninstall_linux.sh"
 cp "vellum.desktop" "${RELEASE_DIR}/vellum.desktop"
 cp "README.md" "${RELEASE_DIR}/README.md"
 
@@ -47,6 +48,7 @@ chmod +x "${RELEASE_DIR}/Vellum"
 chmod +x "${RELEASE_DIR}/iniciar_tudo.sh"
 chmod +x "${RELEASE_DIR}/iniciar_backend.sh"
 chmod +x "${RELEASE_DIR}/install_linux.sh"
+chmod +x "${RELEASE_DIR}/uninstall_linux.sh"
 
 # 4. Geração do tar.gz
 echo "[3/4] Compactando pacote ${TAR_NAME}..."

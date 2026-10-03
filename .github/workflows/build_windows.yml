@@ -8,6 +8,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -33,14 +36,14 @@ jobs:
         with:
           version: '6.7.2'
           arch: 'win64_msvc2019_64'
-          modules: 'qtpdf'
 
       - name: Setup MSVC C++ Compiler
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Build Frontend C++ (Qt6 Release)
+        shell: cmd
         run: |
-          cmake -B build_windows -S qt_frontend -DCMAKE_BUILD_TYPE=Release
+          cmake -B build_windows -S qt_frontend -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%Qt6_DIR%"
           cmake --build build_windows --config Release --parallel
 
       - name: Setup Inno Setup
@@ -54,6 +57,7 @@ jobs:
 
           copy /y "build_windows\Release\Vellum.exe" "release_windows\Vellum.exe"
           copy /y "qt_frontend\resources\app_icon.ico" "release_windows\app_icon.ico"
+          copy /y "download_models.bat" "release_windows\download_models.bat"
 
           windeployqt --no-translations --compiler-runtime "release_windows\Vellum.exe"
 

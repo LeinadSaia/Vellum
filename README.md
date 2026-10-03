@@ -104,6 +104,13 @@ vellum livro.pdf
 ./iniciar_tudo.sh
 ```
 
+#### Como Desinstalar no Linux
+Diferente de outros aplicativos, o Vellum preza por deixar o seu sistema limpo. Para desinstalar completamente:
+```bash
+./uninstall_linux.sh
+```
+O script remove o executável, atalhos, ícones e oferece a opção de remover as configurações salvas, sem deixar nenhum arquivo residual.
+
 ---
 
 ### No Windows 10 / 11
@@ -113,12 +120,19 @@ Baixe a versão executável disponível na aba [Releases](https://github.com/thn
 - Atalhos na Área de Trabalho e no Menu Iniciar.
 - Opção de associar o Vellum para abrir arquivos `.pdf` com dois cliques.
 - Backend em segundo plano 100% invisível (sem janelas pretas de console).
+- Suporte a seleção modular de modelos durante a instalação.
 
 #### Opção B: Executar via Script
 Se clonou o código-fonte no Windows:
 ```cmd
 iniciar_tudo.bat
 ```
+
+#### Como Desinstalar no Windows
+O Vellum cria um desinstalador dedicado e transparente:
+- Acesse o Menu Iniciar > pasta **Vellum** > clique em **Desinstalar Vellum**.
+- Ou abra `Configurações do Windows > Aplicativos > Aplicativos Instalados > Vellum > Desinstalar`.
+- O desinstalador encerra processos em execução, remove toda a pasta da aplicação e pergunta se deseja limpar dados residuais do registro para uma limpeza de 100%.
 
 ---
 

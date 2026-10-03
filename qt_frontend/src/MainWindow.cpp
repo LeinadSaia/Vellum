@@ -151,6 +151,8 @@ void MainWindow::setupMenuBar()
 
     m_actTelaCheia = menuExibir->addAction("Alternar Tela Cheia");
     m_actTelaCheia->setShortcut(QKeySequence(Qt::Key_F11));
+    m_actTelaCheia->setShortcutContext(Qt::ApplicationShortcut);
+    addAction(m_actTelaCheia);
     connect(m_actTelaCheia, &QAction::triggered, this, &MainWindow::onToggleTelaCheia);
 
     m_actBarraLeitor = menuExibir->addAction("Barra de Navegação do Leitor");
@@ -1434,9 +1436,24 @@ void MainWindow::connectSignals()
         if (m_bloquearSyncPagina) {
             return;
         }
-        m_paginaAtual = pag;
-        atualizarInfoNavegacao();
+        if (m_modoVis != ModoVisualizacao::Continuo) {
+            m_paginaAtual = pag;
+            atualizarInfoNavegacao();
+        }
     });
+
+    if (m_pdfView->verticalScrollBar()) {
+        connect(m_pdfView->verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int) {
+            if (m_bloquearSyncPagina || m_modoVis != ModoVisualizacao::Continuo || !m_pdfDoc || m_pdfDoc->pageCount() == 0) {
+                return;
+            }
+            const int pagReal = obterPaginaVisivelNoModoContinuo();
+            if (pagReal != m_paginaAtual) {
+                m_paginaAtual = pagReal;
+                atualizarInfoNavegacao();
+            }
+        });
+    }
 
     // Proteção de salto indevido de página durante zoom (evita oscilação com roda do mouse ou botões)
     m_timerZoomDebounce = new QTimer(this);
@@ -1459,7 +1476,7 @@ void MainWindow::connectSignals()
         m_bloquearSyncPagina = false;
     });
 
-    // Proteção de salto indevido de página durante redimensionamento do painel/splitter/janela
+    // Proteção de salto indevido de página durante redimensionamento do painel/splitter/janela/tela cheia
     m_timerDebounceResize = new QTimer(this);
     m_timerDebounceResize->setSingleShot(true);
     connect(m_timerDebounceResize, &QTimer::timeout, this, [this]() {
@@ -1467,9 +1484,10 @@ void MainWindow::connectSignals()
             const int total = m_pdfDoc->pageCount();
             const int pagFoco = qBound(0, m_paginaSalvaResize, total - 1);
             if (m_modoVis == ModoVisualizacao::Continuo) {
-                const int y = calcularScrollVerticalParaPagina(pagFoco, m_pdfView->zoomFactor());
+                const int yBase = calcularScrollVerticalParaPagina(pagFoco, m_pdfView->zoomFactor());
+                const int yFinal = yBase + m_scrollOffsetNaPagina;
                 if (m_pdfView->verticalScrollBar()) {
-                    m_pdfView->verticalScrollBar()->setValue(y);
+                    m_pdfView->verticalScrollBar()->setValue(yFinal);
                 }
             }
             m_pdfView->pageNavigator()->jump(pagFoco, QPointF(0, 0), 0);
@@ -1481,11 +1499,20 @@ void MainWindow::connectSignals()
 
     connect(m_splitter, &QSplitter::splitterMoved, this, [this](int, int) {
         if (!m_bloquearSyncPagina) {
-            m_paginaSalvaResize = m_paginaAtual;
+            const int pagReal = (m_modoVis == ModoVisualizacao::Continuo)
+                                ? obterPaginaVisivelNoModoContinuo()
+                                : m_paginaAtual;
+            m_paginaSalvaResize = pagReal;
+            if (m_modoVis == ModoVisualizacao::Continuo && m_pdfView && m_pdfView->verticalScrollBar()) {
+                const int yBase = calcularScrollVerticalParaPagina(pagReal, m_pdfView->zoomFactor());
+                m_scrollOffsetNaPagina = qMax(0, m_pdfView->verticalScrollBar()->value() - yBase);
+            } else {
+                m_scrollOffsetNaPagina = 0;
+            }
             m_bloquearSyncPagina = true;
         }
         if (m_timerDebounceResize) {
-            m_timerDebounceResize->start(120);
+            m_timerDebounceResize->start(200);
         }
     });
 }
@@ -2075,7 +2102,23 @@ void MainWindow::atualizarBadgeModeloAtivo()
 
 void MainWindow::onToggleTelaCheia()
 {
-    const int pagSalva = m_paginaAtual;
+    if (!m_pdfDoc || m_pdfDoc->pageCount() == 0) {
+        if (!isFullScreen()) showFullScreen(); else showMaximized();
+        return;
+    }
+
+    const int pagReal = (m_modoVis == ModoVisualizacao::Continuo) 
+                        ? obterPaginaVisivelNoModoContinuo() 
+                        : m_paginaAtual;
+    m_paginaSalvaResize = pagReal;
+
+    if (m_modoVis == ModoVisualizacao::Continuo && m_pdfView && m_pdfView->verticalScrollBar()) {
+        const int yBase = calcularScrollVerticalParaPagina(pagReal, m_pdfView->zoomFactor());
+        m_scrollOffsetNaPagina = qMax(0, m_pdfView->verticalScrollBar()->value() - yBase);
+    } else {
+        m_scrollOffsetNaPagina = 0;
+    }
+
     m_bloquearSyncPagina = true;
 
     const bool paraTelaCheia = !isFullScreen();
@@ -2092,34 +2135,30 @@ void MainWindow::onToggleTelaCheia()
         appendLog("Modo Tela Cheia desativado: barras superiores restauradas.", "info");
     }
 
-    // Restaura a página e a rolagem vertical após o recálculo do layout da tela cheia
-    QTimer::singleShot(150, this, [this, pagSalva]() {
-        if (m_pdfDoc && m_pdfDoc->pageCount() > 0) {
-            const int total = m_pdfDoc->pageCount();
-            const int pagFoco = qBound(0, pagSalva, total - 1);
-            if (m_modoVis == ModoVisualizacao::Continuo) {
-                const int y = calcularScrollVerticalParaPagina(pagFoco, m_pdfView->zoomFactor());
-                if (m_pdfView->verticalScrollBar()) {
-                    m_pdfView->verticalScrollBar()->setValue(y);
-                }
-            }
-            m_pdfView->pageNavigator()->jump(pagFoco, QPointF(0, 0), 0);
-            m_paginaAtual = pagFoco;
-            atualizarInfoNavegacao();
-        }
-        m_bloquearSyncPagina = false;
-    });
+    if (m_timerDebounceResize) {
+        m_timerDebounceResize->stop();
+        m_timerDebounceResize->start(350);
+    }
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event)
 {
     if (!m_bloquearSyncPagina && m_pdfDoc && m_pdfDoc->pageCount() > 0) {
-        m_paginaSalvaResize = m_paginaAtual;
+        const int pagReal = (m_modoVis == ModoVisualizacao::Continuo) 
+                            ? obterPaginaVisivelNoModoContinuo() 
+                            : m_paginaAtual;
+        m_paginaSalvaResize = pagReal;
+        if (m_modoVis == ModoVisualizacao::Continuo && m_pdfView && m_pdfView->verticalScrollBar()) {
+            const int yBase = calcularScrollVerticalParaPagina(pagReal, m_pdfView->zoomFactor());
+            m_scrollOffsetNaPagina = qMax(0, m_pdfView->verticalScrollBar()->value() - yBase);
+        } else {
+            m_scrollOffsetNaPagina = 0;
+        }
         m_bloquearSyncPagina = true;
     }
     QMainWindow::resizeEvent(event);
     if (m_timerDebounceResize) {
-        m_timerDebounceResize->start(150);
+        m_timerDebounceResize->start(300);
     }
 }
 
@@ -2147,11 +2186,6 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
         }
     }
 
-    if (event->key() == Qt::Key_F11) {
-        onToggleTelaCheia();
-        event->accept();
-        return;
-    }
     if (event->key() == Qt::Key_Escape) {
         if (m_rubberBand && m_rubberBand->isVisible()) {
             m_rubberBand->hide();
@@ -2214,10 +2248,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 return true;
             }
         }
-        if (ke->key() == Qt::Key_F11) {
-            onToggleTelaCheia();
-            return true;
-        }
+
         if (ke->key() == Qt::Key_Escape) {
             if (m_rubberBand && m_rubberBand->isVisible()) {
                 m_rubberBand->hide();
@@ -2376,6 +2407,31 @@ int MainWindow::calcularScrollVerticalParaPagina(int pagina, qreal zoom) const
         y += (sz.height() * zoom) + spacing;
     }
     return qRound(y);
+}
+
+int MainWindow::obterPaginaVisivelNoModoContinuo() const
+{
+    if (!m_pdfDoc || m_pdfDoc->pageCount() == 0 || !m_pdfView) return 0;
+    if (m_modoVis != ModoVisualizacao::Continuo) return m_paginaAtual;
+
+    const auto *vsb = m_pdfView->verticalScrollBar();
+    if (!vsb) return m_paginaAtual;
+
+    const int scrollY = vsb->value();
+    qreal yAcumulado = m_pdfView->documentMargins().top();
+    const int spacing = m_pdfView->pageSpacing();
+    const qreal zoom = m_pdfView->zoomFactor();
+    const int total = m_pdfDoc->pageCount();
+
+    for (int i = 0; i < total; ++i) {
+        const QSizeF sz = m_pdfDoc->pagePointSize(i);
+        const qreal h = (sz.height() * zoom) + spacing;
+        if (scrollY < yAcumulado + (h * 0.7)) {
+            return i;
+        }
+        yAcumulado += h;
+    }
+    return total - 1;
 }
 
 void MainWindow::forcarNavegacaoPagina(int pagina)

@@ -164,6 +164,7 @@ private:
     void atualizarInfoNavegacao();
     void atualizarLabelZoom();
     int  calcularScrollVerticalParaPagina(int pagina, qreal zoom) const;
+    int  obterPaginaVisivelNoModoContinuo() const;
 
     void capturarRegiaoRubberBand();
 
@@ -199,6 +200,7 @@ private:
 
     bool             m_barraVisPreviaVisivel = true;
     int              m_paginaSalvaResize     = 0;
+    int              m_scrollOffsetNaPagina  = 0;
     QTimer          *m_timerDebounceResize   = nullptr;
     QTimer          *m_timerZoomDebounce     = nullptr;
 

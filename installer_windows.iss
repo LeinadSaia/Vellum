@@ -4,7 +4,7 @@
 ; ==============================================================================
 
 #define MyAppName "Vellum"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Vellum Team"
 #define MyAppURL "https://github.com/thnsm/App-de-tradu-o-e-leitura"
 #define MyAppExeName "Vellum.exe"

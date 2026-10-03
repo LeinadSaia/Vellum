@@ -9,7 +9,7 @@ int main(int argc, char *argv[])
 
     app.setApplicationName("Vellum");
     app.setApplicationDisplayName("Vellum");
-    app.setApplicationVersion("1.0.0");
+    app.setApplicationVersion("1.0.1");
     app.setOrganizationName("Vellum");
     app.setDesktopFileName("vellum");
     app.setWindowIcon(QIcon(":/app_icon.png"));

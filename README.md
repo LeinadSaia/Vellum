@@ -19,7 +19,7 @@
 
 ---
 
-## 📖 Visão Geral
+## Visão Geral
 
 O **Vellum** foi desenvolvido sob a filosofia de **foco total no documento**. Quando o leitor é aberto, a tela é 100% limpa e dedicada à leitura. Com um único atalho (`F4`) ou seleção na tela, o painel lateral inteligente desliza suavemente oferecendo ferramentas profundas de estudo técnico:
 
@@ -30,7 +30,7 @@ O **Vellum** foi desenvolvido sob a filosofia de **foco total no documento**. Qu
 
 ---
 
-## ⚡ Os 4 Níveis de Desempenho (Tiers de Hardware)
+## Os 4 Níveis de Desempenho (Tiers de Hardware)
 
 O Vellum adapta-se automaticamente a qualquer perfil de máquina, desde notebooks simples sem placa de vídeo até estações de trabalho dedicadas:
 
@@ -41,11 +41,11 @@ O Vellum adapta-se automaticamente a qualquer perfil de máquina, desde notebook
 | **2** | **Equilibrado** | Ollama `llama3.2:3b` (3B) | Whisper `base.en` | ~6 GB RAM, CPU moderna ou GPU integrada |
 | **3** | **Avançado (Dedicado)** | Ollama `llama3:8b` (8B) | Whisper `base.en` / `small.en` | ~8 a 16 GB RAM ou GPU dedicada (CUDA / Vulkan) |
 
-> 💡 **Graceful Degradation**: Se você não tiver o Ollama ou o Whisper instalados, o Vellum opera perfeitamente no modo **Nuvem (Gemini)** sem travar ou emitir erros de inicialização.
+> **Degradação Graciosa (Graceful Degradation)**: Se você não tiver o Ollama ou o Whisper instalados, o Vellum opera perfeitamente no modo **Nuvem (Gemini)** sem travar ou emitir erros de inicialização.
 
 ---
 
-## 🏛️ Arquitetura do Sistema
+## Arquitetura do Sistema
 
 O projeto adota uma arquitetura desacoplada em duas camadas:
 
@@ -71,9 +71,9 @@ O projeto adota uma arquitetura desacoplada em duas camadas:
 
 ---
 
-## 🚀 Instalação & Execução
+## Instalação e Execução
 
-### 🐧 No Linux (Ubuntu, Debian, Fedora, Arch, etc.)
+### No Linux (Ubuntu, Debian, Fedora, Arch, etc.)
 
 #### Opção A: Instalador Automatizado (Recomendado)
 Para integrar o Vellum diretamente no menu do seu sistema operacional (`.desktop`), registrar o ícone e associar arquivos PDF:
@@ -94,7 +94,7 @@ vellum livro.pdf
 
 ---
 
-### 🪟 No Windows 10 / 11
+### No Windows 10 / 11
 
 #### Opção A: Instalador Clássico (`Vellum-Setup-Windows.exe`)
 Baixe a versão executável disponível na aba [Releases](https://github.com/thnsm/App-de-tradu-o-e-leitura/releases) do repositório e execute o instalador. Ele configurará:
@@ -110,7 +110,7 @@ iniciar_tudo.bat
 
 ---
 
-## 📦 Como Gerar as Releases para o GitHub
+## Como Gerar as Releases para o GitHub
 
 Se você é o mantenedor e deseja gerar os pacotes para publicar no GitHub Releases:
 
@@ -130,7 +130,7 @@ Ele compila o frontend, executa o `windeployqt`, empacota o backend com PyInstal
 
 ---
 
-## ⌨️ Atalhos de Teclado Essenciais
+## Atalhos de Teclado Essenciais
 
 | Atalho | Ação |
 | :--- | :--- |
@@ -149,7 +149,7 @@ Ele compila o frontend, executa o `windeployqt`, empacota o backend com PyInstal
 
 ---
 
-## ⚙️ Variáveis de Ambiente & Configurações Opcionais
+## Variáveis de Ambiente e Configurações Opcionais
 
 O Vellum salva suas preferências e chaves de API automaticamente nas configurações do sistema. Caso prefira configurar via terminal:
 
@@ -162,6 +162,6 @@ O Vellum salva suas preferências e chaves de API automaticamente nas configura�
 
 ---
 
-## 📄 Licença
+## Licença
 
 Distribuído sob a licença **MIT**. Consulte `LICENSE` para mais detalhes.

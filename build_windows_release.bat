@@ -39,10 +39,13 @@ echo [3/5] Coletando dependencias Qt com windeployqt...
 windeployqt --no-translations --compiler-runtime "%RELEASE_DIR%\Vellum.exe"
 copy /y "qt_frontend\resources\app_icon.ico" "%RELEASE_DIR%\app_icon.ico"
 
-echo.
 echo [4/5] Empacotando Backend Python (FastAPI) com PyInstaller...
 pip install pyinstaller -r requirements.txt
-pyinstaller --clean --noconsole --name vellum_backend --distpath "%RELEASE_DIR%" main.py
+pyinstaller --clean --noconsole --name vellum_backend --onedir --distpath "temp_dist" main.py
+if exist "temp_dist\vellum_backend" (
+    move "temp_dist\vellum_backend" "%RELEASE_DIR%\backend"
+    rmdir /s /q "temp_dist"
+)
 
 echo.
 echo [5/5] Gerando Instalador com Inno Setup...

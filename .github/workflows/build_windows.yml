@@ -1,0 +1,78 @@
+name: Build Windows Installer
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Setup Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.7.2'
+          arch: 'win64_msvc2019_64'
+          modules: 'qtpdf'
+
+      - name: Setup MSVC C++ Compiler
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build Frontend C++ (Qt6 Release)
+        run: |
+          cmake -B build_windows -S qt_frontend -DCMAKE_BUILD_TYPE=Release
+          cmake --build build_windows --config Release --parallel
+
+      - name: Setup Inno Setup
+        uses: fibrous/install-inno-setup@v1
+
+      - name: Package Release Directory and Generate Installer
+        shell: cmd
+        run: |
+          mkdir release_windows
+          mkdir dist_installer
+
+          copy /y "build_windows\Release\Vellum.exe" "release_windows\Vellum.exe"
+          copy /y "qt_frontend\resources\app_icon.ico" "release_windows\app_icon.ico"
+
+          windeployqt --no-translations --compiler-runtime "release_windows\Vellum.exe"
+
+          pyinstaller --clean --noconsole --name vellum_backend --onedir --distpath "temp_dist" main.py
+          move "temp_dist\vellum_backend" "release_windows\backend"
+          rmdir /s /q "temp_dist"
+
+          iscc installer_windows.iss
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vellum-Setup-Windows
+          path: dist_installer/Vellum-Setup-Windows-v*.exe
+
+      - name: Release to GitHub (when tag pushed)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist_installer/Vellum-Setup-Windows-v*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

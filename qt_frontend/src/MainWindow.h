@@ -27,6 +27,10 @@
 #include <QTextBrowser>
 #include <QKeyEvent>
 #include <QTimer>
+#include <QProcess>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
 
 class NetworkManager;
 
@@ -49,10 +53,14 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override = default;
 
+    void carregarArquivoPdf(const QString &caminho);
+
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
 
 private slots:
     // ── Arquivo e Seleção ─────────────────────────────────────────────────
@@ -94,18 +102,20 @@ private slots:
     void onModo2PagClicado();
     void onModoContClicado();
 
-    // ── Controles de Zoom ─────────────────────────────────────────────────
+    // ── Controles de Zoom e Janela ────────────────────────────────────────
     void onZoomMenos();
     void onZoomMais();
     void onAjustarLargura();
     void onAjustarPagina();
     void onZoomReset();
+    void onToggleTelaCheia();
 
     // ── Respostas de Rede ─────────────────────────────────────────────────
-    void onTraducaoDiretaResultado(const QString &textoIngles, const QString &traducaoPortugues);
+    void onTraducaoDiretaResultado(const QString &textoIngles, const QString &traducaoPortugues, const QString &modeloUsado = QString());
     void onLimparOcrResultado(const QString &texto);
     void onTranscricaoResultado(const QString &texto);
     void onServidorOnline(bool online);
+    void onModelosStatusRecebido(bool ollamaOnline, bool temPhi3, bool temLlama32, bool temLlama3);
     void onRequisicaoIniciada(const QString &endpoint);
     void onRequisicaoConcluida(const QString &endpoint);
     void onErroRequisicao(const QString &endpoint, const QString &mensagem);
@@ -114,6 +124,21 @@ private slots:
     // ── Configurações e Desempenho ────────────────────────────────────────
     void onPerfilAlterado(int index);
 
+    // ── Bloco de Notas / Anotações ────────────────────────────────────────
+    void onSalvarAnotacoes();
+    void onAbrirAnotacoes();
+    void onLimparAnotacoes();
+    void onCopiarAnotacoes();
+    void onMudarFonteAnotacoes(const QString &familia);
+    void onMudarTamanhoAnotacoes(int pt);
+    void onAumentarFonteAnotacoes();
+    void onDiminuirFonteAnotacoes();
+    void onToggleBoldAnotacoes();
+    void onToggleItalicAnotacoes();
+    void onToggleUnderlineAnotacoes();
+    void onEscolherCorAnotacoes();
+    void onAtualizarContadorNotas();
+
 private:
     void setupMenuBar();
     void setupUi();
@@ -121,6 +146,7 @@ private:
     QWidget* criarAbaTraducao();
     QWidget* criarAbaTutor();
     QWidget* criarAbaChatIA();
+    QWidget* criarAbaAnotacoes();
     QWidget* criarAbaConfiguracoes();
     void setupStyleSheet();
     void connectSignals();
@@ -135,6 +161,7 @@ private:
     void zoomDelta(qreal delta);
     void atualizarInfoNavegacao();
     void atualizarLabelZoom();
+    int  calcularScrollVerticalParaPagina(int pagina, qreal zoom) const;
 
     void capturarRegiaoRubberBand();
 
@@ -160,13 +187,18 @@ private:
     QJsonArray       m_chatHistoricoJson;
     QString          m_iaProvedor         = "gemini";
     QString          m_iaApiKey;
-    QString          m_iaModelo           = "gemini-3.8-flash";
+    QString          m_iaModelo           = "gemini-3.5-flash-lite";
     QString          m_ollamaModelTier    = "llama3";    // modelo Ollama do tier selecionado
     QString          m_whisperModelTier   = "base.en";   // modelo Whisper do tier selecionado
     bool             m_panModo            = false;       // mao de navegacao no PDF
 
     QPoint           m_rbOrigin;
     QPoint           m_panOrigin;
+
+    bool             m_barraVisPreviaVisivel = true;
+    int              m_paginaSalvaResize     = 0;
+    QTimer          *m_timerDebounceResize   = nullptr;
+    QTimer          *m_timerZoomDebounce     = nullptr;
 
     // ── Layout e Divisor ──────────────────────────────────────────────────
     QSplitter       *m_splitter       = nullptr;
@@ -188,6 +220,7 @@ private:
     // ── Ações do Menu ─────────────────────────────────────────────────────
     QAction         *m_actTogglePainel = nullptr;
     QAction         *m_actBarraLeitor  = nullptr;
+    QAction         *m_actTelaCheia    = nullptr;
 
     // ── Barra Superior de Navegação ───────────────────────────────────────
     QPushButton     *m_btnPagAnterior = nullptr;
@@ -204,6 +237,7 @@ private:
     QPushButton     *m_btnZoomReset   = nullptr;
     QPushButton     *m_btnAjustarLarg = nullptr;
     QPushButton     *m_btnAjustarPag  = nullptr;
+    QPushButton     *m_btnTelaCheia   = nullptr;
 
     // ── Aba 1: Tradução ───────────────────────────────────────────────────
     QPushButton     *m_btnModoCaptura    = nullptr;
@@ -239,7 +273,25 @@ private:
     QPushButton     *m_btnLimparChat     = nullptr;
     QComboBox       *m_comboChatIA       = nullptr;  // seletor rapido de IA no chat
 
-    // ── Aba 4: Desempenho & Layout ────────────────────────────────────────
+    // ── Aba 4: Bloco de Notas / Anotações ─────────────────────────────────
+    QTextEdit       *m_txtAnotacoes      = nullptr;
+    QPushButton     *m_btnNovoNota       = nullptr;
+    QPushButton     *m_btnAbrirNota      = nullptr;
+    QPushButton     *m_btnSalvarNota     = nullptr;
+    QPushButton     *m_btnCopiarNota     = nullptr;
+    QComboBox       *m_comboFonteNota    = nullptr;
+    QSpinBox        *m_spinTamanhoNota   = nullptr;
+    QPushButton     *m_btnFonteMaisNota  = nullptr;
+    QPushButton     *m_btnFonteMenosNota = nullptr;
+    QPushButton     *m_btnBoldNota       = nullptr;
+    QPushButton     *m_btnItalicNota     = nullptr;
+    QPushButton     *m_btnUnderlineNota  = nullptr;
+    QPushButton     *m_btnCorNota        = nullptr;
+    QLabel          *m_lblStatusNota     = nullptr;
+    QLabel          *m_lblArquivoNota    = nullptr;
+    QString          m_caminhoArquivoNota;
+
+    // ── Aba 5: Desempenho & Layout ────────────────────────────────────────
     QComboBox       *m_comboPerfil       = nullptr;
     QPushButton     *m_btnSalvarLayout   = nullptr;
     QPushButton     *m_btnRestaurarLayout= nullptr;
@@ -264,5 +316,12 @@ private:
     int              m_duracaoEstimadaMs    = 2000;
     int              m_tempoDecorridoMs     = 0;
     QString          m_operacaoAtual;
+
+    // ── Empty State & Gerenciamento do Motor Backend ──────────────────────
+    QWidget         *m_emptyStateWidget     = nullptr;
+    QProcess        *m_backendProcess       = nullptr;
+    void atualizarVisibilidadeEmptyState();
+    void verificarEIniciarBackend();
+    void pararBackend();
 };
 

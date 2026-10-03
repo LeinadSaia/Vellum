@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ===================================================
-#   Iniciando Backend - Ensinador de Ingles (Linux)
+#   Iniciando Backend - Vellum (Linux)
 # ===================================================
 
 cd "$(dirname "$0")"
@@ -15,13 +15,14 @@ fuser -k 8000/tcp >/dev/null 2>&1
 sleep 0.5
 
 # Le o tier salvo pelo frontend (QSettings → INI via Python)
-# Formato: org=EnsinadorDeIngles, app=LeitorTecnico
+# Formato: org=Vellum, app=LeitorTecnico
 OLLAMA_TIER=$(python3 - <<'EOF'
 try:
     import configparser, os, pathlib
-    # Localiza o arquivo QSettings no XDG_CONFIG_HOME
     cfg_base = pathlib.Path(os.environ.get("XDG_CONFIG_HOME", pathlib.Path.home() / ".config"))
-    ini = cfg_base / "EnsinadorDeIngles" / "LeitorTecnico.conf"
+    ini = cfg_base / "Vellum" / "LeitorTecnico.conf"
+    if not ini.exists():
+        ini = cfg_base / "EnsinadorDeIngles" / "LeitorTecnico.conf"
     if ini.exists():
         cfg = configparser.ConfigParser()
         cfg.read(str(ini))
@@ -39,13 +40,13 @@ EOF
 export OLLAMA_MODEL=$(echo "$OLLAMA_TIER" | cut -d'|' -f1)
 export WHISPER_MODEL=$(echo "$OLLAMA_TIER" | cut -d'|' -f2)
 
-echo "Tier selecionado: Ollama=${OLLAMA_MODEL}  Whisper=${WHISPER_MODEL}"
+echo "Tier configurado: Ollama=${OLLAMA_MODEL}  Whisper=${WHISPER_MODEL}"
 
-# Verifica se o Ollama esta ativo (apenas avisa, nao bloqueia)
+# Verifica se o Ollama está ativo (apenas avisa se usuário escolher modelo local)
 if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-    echo "[AVISO] Ollama nao responde em localhost:11434."
-    echo "        Execute em outro terminal: ollama serve"
-    echo "        E baixe o modelo escolhido: ollama pull ${OLLAMA_MODEL}"
+    echo "[INFO] Ollama não detectado em localhost:11434."
+    echo "       (Para modelos locais, inicie com 'ollama serve' e baixe: ollama pull ${OLLAMA_MODEL})"
+    echo "       O modo Nuvem (Gemini) funciona normalmente sem Ollama."
     echo ""
 fi
 

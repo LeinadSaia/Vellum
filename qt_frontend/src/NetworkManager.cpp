@@ -81,6 +81,26 @@ void NetworkManager::verificarConexao()
     });
 }
 
+void NetworkManager::verificarModelosStatus()
+{
+    auto *reply = get("/modelos_status");
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        if (reply->error() == QNetworkReply::NoError) {
+            const QByteArray data = reply->readAll();
+            QJsonDocument doc = QJsonDocument::fromJson(data);
+            if (doc.isObject()) {
+                const QJsonObject obj = doc.object();
+                const bool ollamaOnline = obj.value("ollama_online").toBool(false);
+                const bool temPhi3      = obj.value("tem_phi3").toBool(false);
+                const bool temLlama32   = obj.value("tem_llama32").toBool(false);
+                const bool temLlama3    = obj.value("tem_llama3").toBool(false);
+                emit modelosStatusRecebido(ollamaOnline, temPhi3, temLlama32, temLlama3);
+            }
+        }
+        reply->deleteLater();
+    });
+}
+
 void NetworkManager::limparOcr(const QString &textoSujo, const QString &apiKey)
 {
     const QString endpoint = "/limpar_ocr";
@@ -238,7 +258,7 @@ void NetworkManager::avaliarTraducao(const QString &textoIngles, const QString &
     });
 }
 
-void NetworkManager::traduzirDireto(const QString &textoIngles, const QByteArray &imagemBase64, const QString &apiKey)
+void NetworkManager::traduzirDireto(const QString &textoIngles, const QByteArray &imagemBase64, const QString &apiKey, const QString &modelo)
 {
     const QString endpoint = "/traduzir";
     emit requisicaoIniciada(endpoint);
@@ -250,6 +270,8 @@ void NetworkManager::traduzirDireto(const QString &textoIngles, const QByteArray
         body["imagem_base64"] = QString::fromLatin1(imagemBase64);
     if (!apiKey.isEmpty())
         body["api_key"] = apiKey;
+    if (!modelo.isEmpty())
+        body["modelo"] = modelo;
 
     const QByteArray jsonBody = QJsonDocument(body).toJson(QJsonDocument::Compact);
     auto *reply = postJson(endpoint, jsonBody);
@@ -267,8 +289,9 @@ void NetworkManager::traduzirDireto(const QString &textoIngles, const QByteArray
         const QByteArray respData = reply->readAll();
         const QString textoEn = extrairCampoString(respData, "texto_ingles");
         const QString textoPt = extrairCampoString(respData, "traducao_portugues");
+        const QString modeloUsado = extrairCampoString(respData, "modelo_usado");
 
-        emit traducaoDiretaResultado(textoEn, textoPt);
+        emit traducaoDiretaResultado(textoEn, textoPt, modeloUsado);
     });
 }
 
@@ -305,7 +328,7 @@ void NetworkManager::pararAudio()
     connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
 }
 
-void NetworkManager::avaliarPronuncia(const QString &textoEsperado, const QString &textoFalado, const QString &nivel)
+void NetworkManager::avaliarPronuncia(const QString &textoEsperado, const QString &textoFalado, const QString &nivel, const QString &modelo, const QString &apiKey)
 {
     const QString endpoint = "/avaliar_pronuncia";
     emit requisicaoIniciada(endpoint);
@@ -314,6 +337,12 @@ void NetworkManager::avaliarPronuncia(const QString &textoEsperado, const QStrin
     body["texto_esperado"] = textoEsperado;
     body["texto_falado"]   = textoFalado;
     body["nivel"]          = nivel;
+    if (!modelo.isEmpty()) {
+        body["modelo"] = modelo;
+    }
+    if (!apiKey.isEmpty()) {
+        body["api_key"] = apiKey;
+    }
     const QByteArray jsonBody = QJsonDocument(body).toJson(QJsonDocument::Compact);
 
     auto *reply = postJson(endpoint, jsonBody);

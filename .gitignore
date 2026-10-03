@@ -33,8 +33,22 @@ compile_commands.json
 *.a
 *.lib
 *.exe
+Vellum
+Vellum.exe
+vellum_backend
+vellum_backend.exe
 EnsinadorDeIngles
 EnsinadorDeIngles.exe
+
+# Packaging & Installers
+dist_installer/
+release_linux/
+release_windows/
+build_windows/
+*.tar.gz
+*.zip
+*.deb
+*.AppImage
 
 # Qt Creator & IDEs
 *.user

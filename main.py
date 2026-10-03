@@ -19,6 +19,7 @@ import logging
 import base64
 import io
 import os
+import sys
 import re
 import tempfile
 import time
@@ -40,22 +41,57 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
-# Configuração do executável do Tesseract (com detecção automática no Windows)
+# Cliente HTTP persistente (Connection Pooling & Keep-Alive para Google Gemini)
+# Elimina overhead de handshake TLS/TCP a cada chamada
 # ---------------------------------------------------------------------------
+_http_async_client: Optional[httpx.AsyncClient] = None
+
+def _obter_http_client() -> httpx.AsyncClient:
+    global _http_async_client
+    if _http_async_client is None or _http_async_client.is_closed:
+        _http_async_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(15.0, connect=5.0),
+            limits=httpx.Limits(max_keepalive_connections=20, max_connections=50, keepalive_expiry=60.0)
+        )
+    return _http_async_client
+
+# ---------------------------------------------------------------------------
+# Configuração do executável do Tesseract (detecção local e de sistema)
+# ---------------------------------------------------------------------------
+base_dir = os.path.dirname(os.path.abspath(__file__))
+exec_dir = os.path.dirname(sys.executable) if hasattr(sys, 'executable') else base_dir
+
+candidatos_tesseract = []
 if os.name == 'nt':
-    candidatos_tesseract = [
+    candidatos_tesseract.extend([
+        os.path.join(base_dir, "tesseract", "tesseract.exe"),
+        os.path.join(base_dir, "Tesseract-OCR", "tesseract.exe"),
+        os.path.join(base_dir, "bin", "tesseract.exe"),
+        os.path.join(exec_dir, "tesseract", "tesseract.exe"),
+        os.path.join(exec_dir, "Tesseract-OCR", "tesseract.exe"),
+        os.path.join(exec_dir, "bin", "tesseract.exe"),
         r'C:\Program Files\Tesseract-OCR\tesseract.exe',
         r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
         os.path.expandvars(r'%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe'),
-    ]
-    for caminho in candidatos_tesseract:
-        if os.path.isfile(caminho):
-            pytesseract.pytesseract.tesseract_cmd = caminho
-            break
-    else:
-        cmd_path = shutil.which('tesseract')
-        if cmd_path:
-            pytesseract.pytesseract.tesseract_cmd = cmd_path
+    ])
+else:
+    candidatos_tesseract.extend([
+        os.path.join(base_dir, "bin", "tesseract"),
+        os.path.join(exec_dir, "bin", "tesseract"),
+    ])
+
+for caminho in candidatos_tesseract:
+    if os.path.isfile(caminho):
+        pytesseract.pytesseract.tesseract_cmd = caminho
+        tess_dir = os.path.dirname(caminho)
+        tessdata_local = os.path.join(tess_dir, "tessdata")
+        if os.path.isdir(tessdata_local) and "TESSDATA_PREFIX" not in os.environ:
+            os.environ["TESSDATA_PREFIX"] = tessdata_local
+        break
+else:
+    cmd_path = shutil.which('tesseract')
+    if cmd_path:
+        pytesseract.pytesseract.tesseract_cmd = cmd_path
 
 # ---------------------------------------------------------------------------
 # Configuração de Logs e Ambiente
@@ -76,6 +112,52 @@ import hashlib
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 WHISPER_MODEL_NAME = os.getenv("WHISPER_MODEL", "base.en")
 
+
+def _obter_modelos_instalados() -> List[str]:
+    """Consulta o Ollama local e retorna lista de nomes de modelos instalados (em minúsculas)."""
+    try:
+        resp = ollama.list()
+        models_list = resp.models if hasattr(resp, "models") else (resp.get("models", []) if isinstance(resp, dict) else [])
+        instalados = []
+        for m in models_list:
+            nome = getattr(m, "model", None) or (m.get("model") if isinstance(m, dict) else str(m))
+            if nome:
+                instalados.append(nome.lower().strip())
+        return instalados
+    except Exception:
+        return []
+
+
+def _resolver_modelo_ollama(preferido: Optional[str] = None) -> str:
+    """Garante que a requisição use um modelo efetivamente baixado no Ollama.
+    Se o preferido não existir, faz fallback inteligente para o melhor modelo instalado."""
+    instalados = _obter_modelos_instalados()
+    if not instalados:
+        return (preferido or OLLAMA_MODEL).strip()
+
+    # 1. Correspondência direta ou por base (ex: 'llama3' casa com 'llama3:latest')
+    if preferido:
+        pref = preferido.lower().strip()
+        pref_base = pref.split(":")[0]
+        for inst in instalados:
+            if inst == pref or inst == f"{pref}:latest" or inst.split(":")[0] == pref_base:
+                return inst
+
+    # 2. Ordem de fallback inteligente entre os instalados
+    for cand in ["llama3.2:3b", "llama3.2", "phi3:mini", "phi3", "llama3:latest", "llama3:8b", "llama3"]:
+        cand_base = cand.split(":")[0]
+        for inst in instalados:
+            if inst == cand or inst == f"{cand}:latest" or inst.split(":")[0] == cand_base:
+                if preferido:
+                    log.info(f"[Ollama] Modelo '{preferido}' não encontrado. Usando instalado '{inst}'.")
+                return inst
+
+    # 3. Fallback: primeiro modelo disponível no Ollama
+    fallback = instalados[0]
+    if preferido:
+        log.info(f"[Ollama] Usando primeiro modelo disponível: '{fallback}'.")
+    return fallback
+
 # Cache LRU para traducoes identicas (evita reprocessar o mesmo trecho)
 # Limitado a 128 entradas — custo de memoria minimo (~512 KB)
 @functools.lru_cache(maxsize=128)
@@ -87,14 +169,39 @@ _cache_traducao: dict = {}  # hash -> (en_corrigido, pt)
 _MAX_CACHE = 128
 
 
-log.info(f"Carregando modelo Whisper '{WHISPER_MODEL_NAME}'... (otimizado para leitura em inglês)")
-try:
-    _modelo_whisper = whisper.load_model(WHISPER_MODEL_NAME)
-    log.info(f"Modelo Whisper '{WHISPER_MODEL_NAME}' carregado com sucesso.")
-except Exception as e:
-    log.warning(f"Falha ao carregar '{WHISPER_MODEL_NAME}', tentando fallback 'base': {e}")
-    _modelo_whisper = whisper.load_model("base")
-    log.info("Modelo Whisper 'base' carregado.")
+# Lazy loading do Whisper sob demanda (inicialização ultra rápida do backend e tolerância a falhas)
+_modelo_whisper = None
+_whisper_lock = threading.Lock()
+_whisper_carregado_nome: Optional[str] = None
+
+def _obter_modelo_whisper(nome_modelo: Optional[str] = None):
+    """Carrega o modelo Whisper apenas quando for solicitado pelo Tutor de pronúncia."""
+    global _modelo_whisper, _whisper_carregado_nome
+    nome_alvo = nome_modelo or os.getenv("WHISPER_MODEL", WHISPER_MODEL_NAME)
+    with _whisper_lock:
+        if _modelo_whisper is not None and _whisper_carregado_nome == nome_alvo:
+            return _modelo_whisper
+
+        log.info(f"[Whisper] Carregando modelo '{nome_alvo}' sob demanda...")
+        try:
+            _modelo_whisper = whisper.load_model(nome_alvo)
+            _whisper_carregado_nome = nome_alvo
+            log.info(f"[Whisper] Modelo '{nome_alvo}' carregado com sucesso.")
+            return _modelo_whisper
+        except Exception as e1:
+            log.warning(f"[Whisper] Falha ao carregar '{nome_alvo}': {e1}. Tentando fallback 'tiny.en' ou 'base'...")
+            for fallback in ["tiny.en", "base"]:
+                if fallback == nome_alvo:
+                    continue
+                try:
+                    _modelo_whisper = whisper.load_model(fallback)
+                    _whisper_carregado_nome = fallback
+                    log.info(f"[Whisper] Modelo fallback '{fallback}' carregado.")
+                    return _modelo_whisper
+                except Exception as e2:
+                    log.warning(f"[Whisper] Falha no fallback '{fallback}': {e2}")
+            log.error("[Whisper] Não foi possível carregar nenhum modelo do Whisper.")
+            return None
 
 # ---------------------------------------------------------------------------
 # Catálogo de Vozes Neurais (Edge TTS)
@@ -140,74 +247,116 @@ def _gravar_background(taxa_amostragem: int = 16000) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Otimizacao 1: Pre-processador de regras para OCR de eng. eletrica
-# Corrige erros tipicos de escaneamento ANTES de qualquer chamada LLM,
-# de forma instantanea e sem consumo de CPU/GPU.
+# Otimizacao 1: Pre-processador avancado de texto e OCR para engenharia
+# Unifica linhas quebradas por hifen, normaliza espacamento e corrige termos
+# tecnicos sem consumo de LLM de forma instantanea (~1ms).
 # ---------------------------------------------------------------------------
 _CORRECOES_ENG: List[Tuple[re.Pattern, str]] = [
+    # Ligaturas tipograficas comuns de escaneamento
+    (re.compile(r'ﬁ'), 'fi'),
+    (re.compile(r'ﬂ'), 'fl'),
+    (re.compile(r'ﬀ'), 'ff'),
+    (re.compile(r'ﬃ'), 'ffi'),
+    (re.compile(r'ﬄ'), 'ffl'),
+
     # Numeros confundidos com letras em contexto numerico
     (re.compile(r'(?<=[\d\s])l(?=[\d\s.,])', re.IGNORECASE), '1'),   # l → 1 entre numeros
     (re.compile(r'(?<=[\d\s])O(?=[\d\s.,])', re.IGNORECASE), '0'),   # O → 0 entre numeros
     (re.compile(r'(?<=[\d\s])I(?=[\d\s.,])', re.IGNORECASE), '1'),   # I → 1 entre numeros
-    # Siglas classicas de semicondutores mal reconhecidas
+
+    # Siglas classicas de semicondutores e eletronica
     (re.compile(r'\b[Nn][Pp][Nn]\b'), 'npn'),
     (re.compile(r'\b[Pp][Nn][Pp]\b'), 'pnp'),
-    (re.compile(r'\bBJl\b'), 'BJT'),
-    (re.compile(r'\bMOSFEl\b'), 'MOSFET'),
-    (re.compile(r'\bJFEl\b'), 'JFET'),
-    (re.compile(r'\bCM0S\b'), 'CMOS'),
-    (re.compile(r'\bop.?amp\b', re.IGNORECASE), 'op-amp'),
-    # Parametros de polarizacao
-    (re.compile(r'\bVcc\b', re.IGNORECASE), 'Vcc'),
-    (re.compile(r'\bVee\b', re.IGNORECASE), 'Vee'),
-    (re.compile(r'\bVbe\b', re.IGNORECASE), 'Vbe'),
-    (re.compile(r'\bVce\b', re.IGNORECASE), 'Vce'),
-    (re.compile(r'\bVcb\b', re.IGNORECASE), 'Vcb'),
-    (re.compile(r'\bhFE\b', re.IGNORECASE), 'hFE'),
-    (re.compile(r'\bhfe\b', re.IGNORECASE), 'hfe'),
-    # Unidades com letras trocadas
-    (re.compile(r'(\d)\s*k[Oo0](?=[\s,;\.]|$)'), r'\1 kΩ'),
-    (re.compile(r'(\d)\s*M[Oo0](?=[\s,;\.]|$)'), r'\1 MΩ'),
-    (re.compile(r'(\d)\s*[µu]A\b'), r'\1 μA'),
-    (re.compile(r'(\d)\s*[µu]F\b'), r'\1 μF'),
-    # Remover caracteres lixo comuns de escaner
+    (re.compile(r'\bBJ[lI|1]\b'), 'BJT'),
+    (re.compile(r'\bMOSFE[lI|1]\b'), 'MOSFET'),
+    (re.compile(r'\bJFE[lI|1]\b'), 'JFET'),
+    (re.compile(r'\bCM[0O]S\b'), 'CMOS'),
+    (re.compile(r'\bop[-. ]?amp\b', re.IGNORECASE), 'op-amp'),
+    (re.compile(r'\bcoliector\b', re.IGNORECASE), 'collector'),
+    (re.compile(r'\bemiiter\b', re.IGNORECASE), 'emitter'),
+
+    # Parametros de polarizacao e transistores
+    (re.compile(r'\bV[cC][cC]\b'), 'Vcc'),
+    (re.compile(r'\bV[eE][eE]\b'), 'Vee'),
+    (re.compile(r'\bV[bB][eE]\b'), 'Vbe'),
+    (re.compile(r'\bV[cC][eE]\b'), 'Vce'),
+    (re.compile(r'\bV[cC][bB]\b'), 'Vcb'),
+    (re.compile(r'\bh[Ff][Ee]\b'), 'hFE'),
+
+    # Unidades de medidas tecnicas
+    (re.compile(r'(\d+)\s*[kK][Oo0]hm\b', re.IGNORECASE), r'\1 kΩ'),
+    (re.compile(r'(\d+)\s*[mM][Oo0]hm\b', re.IGNORECASE), r'\1 MΩ'),
+    (re.compile(r'(\d+)\s*[Oo0]hm\b', re.IGNORECASE), r'\1 Ω'),
+    (re.compile(r'(\d+)\s*k[Oo0](?=[\s,;\.]|$)'), r'\1 kΩ'),
+    (re.compile(r'(\d+)\s*M[Oo0](?=[\s,;\.]|$)'), r'\1 MΩ'),
+    (re.compile(r'(\d+)\s*[µu]A\b'), r'\1 μA'),
+    (re.compile(r'(\d+)\s*[µu]F\b'), r'\1 μF'),
+    (re.compile(r'(\d+)\s*p[Ff]\b'), r'\1 pF'),
+    (re.compile(r'(\d+)\s*n[Ff]\b'), r'\1 nF'),
+
+    # Ruido residual de borda de escaner
     (re.compile(r'[|](?![\w])'), ' '),
-    (re.compile(r'\s{3,}'), '  '),
 ]
 
 def _pre_processar_ocr_engenharia(texto: str) -> str:
-    """Aplica correcoes rapidas de OCR especificas de eng. eletrica sem usar LLM."""
+    """Aplica correcoes estruturais e tecnicas no texto extraido do escaneamento:
+    1. Reconecta palavras divididas por hifen no final de linha (ex: tran-\\nsistor -> transistor)
+    2. Transforma quebras de linha isoladas em espacos para restaurar oracoes continuas
+    3. Normaliza siglas e unidades de engenharia eletrica
+    """
+    if not texto:
+        return ""
+
+    # Unir palavras quebradas por hífen no final de linha de livro acadêmico
+    texto = re.sub(r'(\b[a-zA-Z]+)[-\u2010\u2013]\s*\n\s*([a-zA-Z]+\b)', r'\1\2', texto)
+
+    # Unir quebras de linha simples dentro de paragrafos (mantem quebra dupla de paragrafo)
+    texto = re.sub(r'(?<!\n)\n(?!\n)', ' ', texto)
+
+    # Aplicar correções de vocabulário técnico de engenharia
     for padrao, substituto in _CORRECOES_ENG:
         texto = padrao.sub(substituto, texto)
+
+    # Normalizar múltiplos espaços em branco
+    texto = re.sub(r'[ \t]{2,}', ' ', texto)
     return texto.strip()
 
 def _extrair_texto_imagem(imagem_base64: str) -> str:
     """
-    Extrai texto de imagem Base64 com pré-processamento avançado para livros escaneados:
-    1. Escala de cinza (L)
-    2. Autocontraste dinâmico para eliminar sombras e amarelamento de papel escaneado
-    3. Super-resolução / Upscaling 2x com Lanczos para caracteres pequenos (como npn, pnp, Vcc, subscritos)
-    4. Tesseract com bloco uniforme (--psm 6) e motor LSTM (--oem 1), com fallback adaptativo
+    Extrai texto de imagem com velocidade e fidelidade aprimoradas para livros escaneados:
+    - Escala de cinza e autocontraste calibrado (elimina sombras e tons amarelados)
+    - Upscaling suave Bicubic 1.8x quando a altura do recorte for < 400px (4x mais rapido que Lanczos)
+    - Tesseract LSTM otimizado com flag --dpi 300 e -c tessedit_do_invert=0 (elimina overhead de deteccao de resolucao)
+    - Reconstrucao sintatica com des-hifenizacao automatica
     """
     image_data = base64.b64decode(imagem_base64)
     image = Image.open(io.BytesIO(image_data))
-    
+
     gray = image.convert('L')
     contraste = ImageOps.autocontrast(gray, cutoff=2)
 
-    # Se o recorte tiver fontes pequenas (altura menor que 500px), amplia 2x para o Tesseract reconhecer siglas pequenas
-    if contraste.height < 500 or contraste.width < 1000:
-        fator = 2
-        img_proc = contraste.resize((contraste.width * fator, contraste.height * fator), Image.Resampling.LANCZOS)
+    # Redimensionamento inteligente: bicubic e 4x mais rapido que Lanczos e ideal para LSTM
+    if contraste.height < 400 or contraste.width < 800:
+        fator = 1.8
+        novo_tam = (int(contraste.width * fator), int(contraste.height * fator))
+        img_proc = contraste.resize(novo_tam, Image.Resampling.BICUBIC)
     else:
         img_proc = contraste
 
-    config = '--psm 6 --oem 1'
-    texto = pytesseract.image_to_string(img_proc, lang='eng', config=config).strip()
+    # --dpi 300 e -c tessedit_do_invert=0 removem o atraso de estimativa de resolucao do Tesseract
+    config_otimizada = '--psm 6 --oem 1 --dpi 300 -c tessedit_do_invert=0'
+    try:
+        texto = pytesseract.image_to_string(img_proc, lang='eng', config=config_otimizada).strip()
 
-    # Se veio quase vazio (ex: tabela ou diagrama), tenta psm 4 ou psm 3
-    if len(texto) < 4 and (image.width > 50 and image.height > 25):
-        texto = pytesseract.image_to_string(img_proc, lang='eng', config='--psm 4 --oem 1').strip()
+        # Fallback se vier quase vazio (ex: tabela ou diagrama isolado)
+        if len(texto) < 4 and (image.width > 50 and image.height > 25):
+            texto = pytesseract.image_to_string(img_proc, lang='eng', config='--psm 4 --oem 1 --dpi 300 -c tessedit_do_invert=0').strip()
+    except pytesseract.TesseractNotFoundError:
+        log.warning("[OCR] Tesseract não encontrado no sistema.")
+        return "[Aviso: Tesseract OCR não foi detectado no sistema. Instale o Tesseract ou verifique o instalador para OCR de imagem.]"
+    except Exception as e:
+        log.error(f"[OCR] Erro durante processamento com Tesseract: {e}")
+        return ""
 
     return _pre_processar_ocr_engenharia(texto)
 
@@ -262,13 +411,19 @@ async def _sintetizar_e_tocar_voz_async(texto: str, voz: str = "en-US-JennyNeura
 # Otimizacao 2: Chamada unica Ollama — traduz + retorna ingles corrigido
 # Otimizacao 3: Roteamento pela API Gemini quando chave disponivel
 # ---------------------------------------------------------------------------
-async def _traduzir_via_gemini_async(texto_ingles: str, api_key: str) -> Tuple[str, str]:
-    """Traduz via Gemini API (cloud) — zero carga no PC local.
-    Inclui fallback automatico para gemini-3.5-flash em caso de sobrecarga (503/timeout)."""
-    modelos_candidatos = [
-        os.environ.get("GEMINI_TRANSLATE_MODEL", "gemini-3.8-flash"),
-        "gemini-3.5-flash"
-    ]
+async def _traduzir_via_gemini_async(texto_ingles: str, api_key: str, modelo_preferido: Optional[str] = None) -> Tuple[str, str]:
+    """Traduz via Gemini API (cloud) com latência ultrabaixa e failover instantâneo.
+    Prioriza modelos com altíssimo throughput (gemini-3.5-flash-lite) para eliminar erros de alta demanda."""
+    modelos_candidatos = []
+    if modelo_preferido and modelo_preferido.startswith("gemini-"):
+        modelos_candidatos.append(modelo_preferido)
+    padrao = os.environ.get("GEMINI_TRANSLATE_MODEL", "gemini-3.5-flash-lite")
+    if padrao not in modelos_candidatos:
+        modelos_candidatos.append(padrao)
+    for reserva in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.8-flash"]:
+        if reserva not in modelos_candidatos:
+            modelos_candidatos.append(reserva)
+
     prompt = (
         "You are a senior technical translator specialized in Electrical Engineering, Electronics and Telecommunications.\n"
         "The text below comes from a scanned academic textbook and may have minor OCR errors.\n"
@@ -281,139 +436,208 @@ async def _traduzir_via_gemini_async(texto_ingles: str, api_key: str) -> Tuple[s
     )
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": max(512, len(texto_ingles) * 3)}
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": max(512, len(texto_ingles) * 3)
+        }
     }
 
+    client = _obter_http_client()
     ultimo_erro = None
+
     for mod in modelos_candidatos:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{mod}:generateContent?key={api_key}"
-        for tentativa in range(2):
-            try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    resp = await client.post(url, json=payload)
-                    if resp.status_code == 200:
-                        raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                        raw = re.sub(r'^```[a-z]*\n?', '', raw).rstrip('`').strip()
-                        import json as _json
-                        data = _json.loads(raw)
-                        return data.get("en_corrigido", texto_ingles), data.get("pt", "")
-                    elif resp.status_code in (503, 429):
-                        ultimo_erro = f"Gemini {mod} retornou {resp.status_code}"
-                        await asyncio.sleep(1.0)
-                        continue
-                    else:
-                        raise RuntimeError(f"Gemini {mod} {resp.status_code}: {resp.text[:200]}")
-            except Exception as exc:
-                ultimo_erro = str(exc)
-                await asyncio.sleep(0.5)
+        # Timeout curto por tentativa (7s) para não prender o usuário se o cluster estiver congestionado
+        try:
+            resp = await client.post(url, json=payload, timeout=7.0)
+            if resp.status_code == 200:
+                cand = resp.json().get("candidates", [{}])[0]
+                parts = cand.get("content", {}).get("parts", [])
+                raw = "\n".join(p.get("text", "") for p in parts if "text" in p).strip()
+                raw = re.sub(r'^```[a-z]*\n?', '', raw).rstrip('`').strip()
+                import json as _json
+                data = _json.loads(raw)
+                return data.get("en_corrigido", texto_ingles), data.get("pt", "")
+            elif resp.status_code in (503, 429):
+                ultimo_erro = f"Gemini {mod} em alta demanda ({resp.status_code})"
+                log.warning(f"[Gemini Traducao] {mod} com alta demanda ({resp.status_code}). Alternando imediatamente...")
+                continue
+            else:
+                ultimo_erro = f"Gemini {mod} {resp.status_code}: {resp.text[:150]}"
+                log.warning(f"[Gemini Traducao] {mod} retornou {resp.status_code}: {resp.text[:100]}")
+                continue
+        except Exception as exc:
+            ultimo_erro = str(exc)
+            log.warning(f"[Gemini Traducao] {mod} falhou/timeout ({exc}). Tentando próximo modelo...")
+            continue
 
     log.warning(f"[Gemini Traducao] Falha em todos os modelos ({ultimo_erro}), fazendo fallback para Ollama")
     raise RuntimeError(ultimo_erro or "Falha na API Gemini")
 
 
+def _limpar_traducao_rambling(texto_pt: str) -> str:
+    """Remove comentários, repetições e invenções de modelos menores em frases curtas."""
+    if not texto_pt:
+        return ""
+    t = texto_pt.strip()
+    if "Tradução:" in t or "Tradução técnica:" in t:
+        partes = re.split(r"\n+|(?:,\s*Tradução)", t)
+        for p in partes:
+            p_limpo = re.sub(r"^(?:Tradução.*?:\s*)?", "", p.strip(), flags=re.IGNORECASE).strip()
+            if p_limpo and not p_limpo.lower().startswith("tradução"):
+                t = p_limpo
+                break
+    linhas = [l.strip() for l in t.splitlines() if l.strip()]
+    if linhas:
+        t = linhas[0]
+    t = re.sub(r"^(?:Tradução(?:\s+técnica)?(?:\s*\(.*?\))?|Translation|PT-BR|Português)\s*:\s*", "", t, flags=re.IGNORECASE)
+    return t.strip(" \"'\n\r")
+
+
+def _traduzir_via_ollama_local(texto_ingles: str, modelo_ollama: str) -> tuple:
+    """Traduz via Ollama com instruções estritas, sem alucinações ou invenções para textos curtos."""
+    log.info(f"[Traducao] Processando {len(texto_ingles)} chars com Ollama ({modelo_ollama})...")
+
+    n_chars = len(texto_ingles)
+    n_palavras = len(texto_ingles.split())
+
+    if n_palavras <= 6:
+        num_predict = min(90, max(50, n_palavras * 10))
+    elif n_palavras <= 25:
+        num_predict = min(200, max(100, n_palavras * 6))
+    else:
+        num_predict = min(1024, max(256, int(n_chars * 2.2)))
+
+    system_prompt = (
+        "Você é um tradutor técnico sênior e estrito especializado em Engenharia, Ciência da Computação e Exatas.\n"
+        "REGRAS OBRIGATÓRIAS:\n"
+        "1. Traduza EXATAMENTE o texto fornecido pelo usuário para o Português do Brasil com máximo rigor técnico.\n"
+        "2. NUNCA invente continuações, explicações, contexto adicional, notas ou variações de tradução.\n"
+        "3. Se o texto for uma palavra isolada, sigla ou frase curta, retorne APENAS a tradução direta exata e PARE imediatamente.\n"
+        "4. Preserve termos padrão e siglas de engenharia.\n"
+        "5. Responda ESTRITAMENTE em formato JSON: {\"en_corrigido\": \"<ingles corrigido>\", \"pt\": \"<traducao em portugues>\"}"
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f'Texto a traduzir:\n"{texto_ingles}"'}
+    ]
+
+    try:
+        resposta = ollama.chat(
+            model=modelo_ollama,
+            messages=messages,
+            format="json",
+            options={
+                "temperature": 0.0,
+                "num_predict": num_predict,
+                "stop": ["\n\n\n", "Tradução técnica:", "Tradução:", "Nota:", "Explicação:"]
+            },
+        )
+        import json as _json
+        raw = resposta["message"]["content"].strip()
+        raw = re.sub(r"^```[a-z]*\n?", "", raw).rstrip("`").strip()
+
+        try:
+            data = _json.loads(raw)
+        except Exception:
+            m_en = re.search(r'"en_corrigido"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', raw)
+            m_pt = re.search(r'"pt"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', raw)
+            data = {
+                "en_corrigido": m_en.group(1) if m_en else texto_ingles,
+                "pt": m_pt.group(1) if m_pt else ""
+            }
+
+        en_corrigido = data.get("en_corrigido", texto_ingles)
+        pt = _limpar_traducao_rambling(data.get("pt", ""))
+        if not pt:
+            raise ValueError("Campo 'pt' vazio no JSON")
+
+        log.info(f"[Traducao] Concluida via Ollama ({modelo_ollama}).")
+        return (en_corrigido, pt, f"{modelo_ollama} (Local)")
+
+    except Exception as exc:
+        log.warning(f"[Traducao] JSON falhou ({exc}), usando prompt simples e estrito de fallback.")
+        system_fallback = (
+            "Você é um tradutor técnico estrito. Traduza o texto do usuário para Português do Brasil. "
+            "Retorne SOMENTE a tradução direta exata, sem introdução, sem explicações, sem alternativas e sem inventar texto."
+        )
+        messages_fallback = [
+            {"role": "system", "content": system_fallback},
+            {"role": "user", "content": f"Traduza diretamente:\n{texto_ingles}"}
+        ]
+        resposta = ollama.chat(
+            model=modelo_ollama,
+            messages=messages_fallback,
+            options={
+                "temperature": 0.0,
+                "num_predict": min(80, max(25, n_palavras * 4)),
+                "stop": ["\n", "\n\n", "Tradução:", "Tradução técnica:", "Original:", "Inglês:", "Nota:"]
+            },
+        )
+        pt_limpo = _limpar_traducao_rambling(resposta["message"]["content"].strip())
+        return (texto_ingles, pt_limpo, f"{modelo_ollama} (Local)")
+
+
 def _traduzir_sync(texto_ingles: Optional[str] = None, imagem_base64: Optional[str] = None,
-                  gemini_api_key: Optional[str] = None) -> tuple:
+                  gemini_api_key: Optional[str] = None, modelo_especifico: Optional[str] = None) -> tuple:
     """Traducao tecnica EN→PT com correcao de OCR embutida.
 
     Fluxo:
-      1. OCR (Tesseract) se vier imagem
-      2. Pre-processador de regras instantaneo (zero LLM)
+      1. OCR (Tesseract) se vier imagem com pre-processamento otimizado
+      2. Pre-processador de regras instantaneo (de-hifenizacao e siglas de eng. eletrica)
       3. Cache LRU: se o mesmo texto ja foi traduzido, retorna instantaneamente
-      4. Se chave Gemini disponivel → API em nuvem (leve para PCs fracos)
-         Senao → Ollama local com prompt duplo (traduz + corrige EN em uma chamada)
-    Retorna: (texto_en_corrigido, texto_pt)
+      4. Roteamento transparente:
+         - Se gemini_api_key presente → API Gemini na nuvem
+         - Senao → Ollama local com o modelo EXATO solicitado (phi3:mini, llama3.2:3b, llama3)
+    Retorna: (texto_en_corrigido, texto_pt, modelo_usado)
     """
     if imagem_base64:
-        log.info("[Traducao] Extraindo texto da imagem via Tesseract...")
+        log.info("[Traducao] Extraindo texto da imagem via Tesseract otimizado...")
         try:
-            texto_ingles = _extrair_texto_imagem(imagem_base64)  # ja aplica pre-processador
+            texto_ingles = _extrair_texto_imagem(imagem_base64)
             log.info(f"[Traducao] OCR extraiu {len(texto_ingles)} caracteres.")
             if not texto_ingles:
-                return ("", "(Nenhum texto detectado nesta area da pagina)")
+                return ("", "(Nenhum texto detectado nesta area da pagina)", "Tesseract OCR")
         except Exception as e:
             log.error(f"[Traducao] Erro no OCR: {e}")
             raise RuntimeError(f"Erro ao extrair imagem: {e}")
 
     if not texto_ingles:
-        return ("", "")
+        return ("", "", "")
 
     # Pre-processador de regras (instantaneo, sem LLM)
     texto_ingles = _pre_processar_ocr_engenharia(texto_ingles)
 
+    # Identifica o modelo exato que executara (com fallback inteligente se nao estiver baixado)
+    modelo_ollama = _resolver_modelo_ollama(modelo_especifico)
+    motor_id = "gemini" if gemini_api_key else modelo_ollama
+
     # Cache LRU: evita rechamar Ollama/Gemini para o mesmo texto
-    cache_key = hashlib.sha1(f"{OLLAMA_MODEL}:{texto_ingles}".encode()).hexdigest()
+    cache_key = hashlib.sha1(f"{motor_id}:{texto_ingles}".encode()).hexdigest()
     if cache_key in _cache_traducao:
-        log.info("[Traducao] Cache hit — retornando resultado anterior.")
+        log.info(f"[Traducao] Cache hit ({motor_id}) — retornando resultado anterior.")
         return _cache_traducao[cache_key]
 
-    # Gemini disponivel → nuvem, zero CPU local
+    # Gemini disponivel → nuvem, zero CPU/GPU local
     if gemini_api_key:
         try:
             loop = asyncio.new_event_loop()
             en_corrigido, pt = loop.run_until_complete(
-                _traduzir_via_gemini_async(texto_ingles, gemini_api_key)
+                _traduzir_via_gemini_async(texto_ingles, gemini_api_key, modelo_especifico)
             )
             loop.close()
             log.info("[Traducao] Concluida via Gemini (nuvem).")
-            resultado = (en_corrigido, pt)
+            resultado = (en_corrigido, pt, "Gemini (Nuvem)")
             _guardar_cache(cache_key, resultado)
             return resultado
         except Exception:
-            pass  # fallback para Ollama abaixo
+            pass  # fallback para Ollama local abaixo
 
-    # Ollama local: prompt unico que traduz E retorna EN corrigido
-    log.info(f"[Traducao] Processando {len(texto_ingles)} chars com Ollama ({OLLAMA_MODEL})...")
-
-    # num_predict calibrado: ~2.5x o tamanho do input para PT, com teto de 1024
-    n_chars = len(texto_ingles)
-    num_predict_duplo   = min(1024, max(256, int(n_chars * 2.5)))
-    num_predict_simples = min(512,  max(128, int(n_chars * 1.8)))
-
-    prompt = f"""Voce eh um tradutor tecnico senior especializado em Engenharia Eletrica, Eletronica e Telecomunicacoes.
-O texto abaixo vem de livro academico escaneado e pode ter erros menores de OCR.
-
-Sua tarefa:
-1. Corrija os erros de OCR no texto original em ingles (preserve siglas: npn, pnp, BJT, MOSFET, Vcc, hFE, op-amp).
-2. Traduza o texto corrigido para o portugues do Brasil com maximo rigor tecnico.
-
-Responda SOMENTE com JSON no formato exato abaixo (sem markdown, sem texto extra):
-{{"en_corrigido": "<ingles corrigido>", "pt": "<traducao em portugues>"}}
-
-Texto em ingles:
-{texto_ingles}
-"""
-    try:
-        resposta = ollama.generate(
-            model=OLLAMA_MODEL,
-            prompt=prompt.strip(),
-            format="json",
-            options={"temperature": 0.05, "num_predict": num_predict_duplo},
-        )
-        import json as _json
-        raw = resposta["response"].strip()
-        raw = re.sub(r'^```[a-z]*\n?', '', raw).rstrip('`').strip()
-        data = _json.loads(raw)
-        en_corrigido = data.get("en_corrigido", texto_ingles)
-        pt = data.get("pt", "")
-        log.info("[Traducao] Concluida via Ollama (prompt duplo).")
-        resultado = (en_corrigido, pt)
-        _guardar_cache(cache_key, resultado)
-        return resultado
-    except Exception as exc:
-        log.warning(f"[Traducao] JSON falhou ({exc}), usando prompt simples de fallback.")
-        # Fallback: prompt simples sem JSON
-        prompt_simples = f"""Traduza o seguinte texto de ingles para portugues do Brasil com rigor tecnico.
-Retorne APENAS a traducao, sem comentarios.
-
-{texto_ingles}"""
-        resposta = ollama.generate(
-            model=OLLAMA_MODEL,
-            prompt=prompt_simples.strip(),
-            options={"temperature": 0.1, "num_predict": num_predict_simples},
-        )
-        resultado = (texto_ingles, resposta["response"].strip())
-        _guardar_cache(cache_key, resultado)
-        return resultado
+    # Ollama local: processamento com modelo especificado
+    resultado = _traduzir_via_ollama_local(texto_ingles, modelo_ollama)
+    _guardar_cache(cache_key, resultado)
+    return resultado
 
 
 def _guardar_cache(key: str, valor: tuple) -> None:
@@ -425,30 +649,29 @@ def _guardar_cache(key: str, valor: tuple) -> None:
 
 
 def _limpar_ocr_sync(texto_sujo: Optional[str] = None, imagem_base64: Optional[str] = None,
-                    gemini_api_key: Optional[str] = None) -> str:
+                    gemini_api_key: Optional[str] = None, modelo_especifico: Optional[str] = None) -> str:
     """Retorna ingles corrigido reutilizando o prompt duplo de _traduzir_sync.
     Nao faz chamada extra ao Ollama — aproveita o en_corrigido do prompt de traducao.
-    Para o tutor, recebe o texto ja processado pelo pre-processador de regras.
     """
     if imagem_base64:
-        texto_sujo = _extrair_texto_imagem(imagem_base64)  # ja aplica pre-processador
+        texto_sujo = _extrair_texto_imagem(imagem_base64)
     if not texto_sujo:
         return ""
-    # Pre-processador de regras (instantaneo)
     texto_sujo = _pre_processar_ocr_engenharia(texto_sujo)
-    # Reutiliza o resultado de traducao para obter o EN corrigido sem chamada extra
     try:
-        en_corrigido, _ = _traduzir_sync(texto_sujo, gemini_api_key=gemini_api_key)
+        en_corrigido, _, _ = _traduzir_sync(texto_sujo, gemini_api_key=gemini_api_key, modelo_especifico=modelo_especifico)
         return en_corrigido if en_corrigido else texto_sujo
     except Exception:
         return texto_sujo
 
 
 
-def _avaliar_pronuncia_sync(texto_esperado: str, texto_falado: str, nivel: str = "intermediario") -> dict:
+def _avaliar_pronuncia_sync(texto_esperado: str, texto_falado: str, nivel: str = "intermediario",
+                            modelo: Optional[str] = None, api_key: Optional[str] = None) -> dict:
     """
     Compara o texto esperado do documento com a transcrição do Whisper.
-    Calcula acurácia objetiva e gera feedback de pronúncia via LLM considerando o nível de exigência.
+    Calcula acurácia objetiva e gera feedback de pronúncia via LLM considerando o nível de exigência
+    e o modelo configurado no perfil ativo (Gemini na nuvem ou modelo local do Ollama).
     """
     palavras_esperadas = [w.lower().strip(".,!?;:\"'()[]") for w in texto_esperado.split() if w]
     palavras_faladas   = [w.lower().strip(".,!?;:\"'()[]") for w in texto_falado.split() if w]
@@ -484,15 +707,44 @@ Forneça um feedback curto (2 a 3 frases) em português:
 2. Dê uma dica fonética sobre as palavras mais difíceis ou que saíram distorcidas.
 Retorne APENAS o feedback, sem notas numéricas no texto.
 """
-    try:
-        resp = ollama.generate(
-            model=OLLAMA_MODEL,
-            prompt=prompt.strip(),
-            options={"temperature": 0.2, "num_predict": 180},
-        )
-        feedback = resp["response"].strip()
-    except Exception as e:
-        feedback = f"Boa tentativa! Acurácia de correspondência de {similaridade}%."
+    feedback = ""
+    # Se tiver chave do Gemini informada (perfil Nuvem)
+    if api_key:
+        for mod in ["gemini-3.5-flash-lite", "gemini-3.5-flash"]:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{mod}:generateContent?key={api_key}"
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.2, "maxOutputTokens": 200}
+                }
+                with httpx.Client(timeout=8.0) as client:
+                    resp = client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        parts = resp.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                        feedback = "\n".join(p.get("text", "") for p in parts if "text" in p).strip()
+                        if feedback:
+                            log.info(f"[Tutor Pronúncia] Feedback gerado via Gemini ({mod}).")
+                            break
+                    elif resp.status_code in (503, 429):
+                        log.warning(f"[Tutor Pronúncia] {mod} com alta demanda ({resp.status_code}), tentando modelo reserva...")
+                        continue
+            except Exception as e:
+                log.warning(f"[Tutor Pronúncia] Falha no Gemini {mod} ({e}), tentando próximo...")
+
+    # Se não usou Gemini ou falhou, usa o modelo local do Ollama correspondente ao perfil
+    if not feedback:
+        modelo_ollama = _resolver_modelo_ollama(modelo)
+        try:
+            resp = ollama.generate(
+                model=modelo_ollama,
+                prompt=prompt.strip(),
+                options={"temperature": 0.2, "num_predict": 180},
+            )
+            feedback = resp["response"].strip()
+            log.info(f"[Tutor Pronúncia] Feedback gerado via Ollama ({modelo_ollama}).")
+        except Exception as e:
+            log.error(f"[Tutor Pronúncia] Erro no Ollama ({modelo_ollama}): {e}")
+            feedback = f"Boa tentativa! Acurácia de correspondência de {similaridade}%."
 
     return {
         "nota": similaridade,
@@ -528,6 +780,7 @@ class TextoSujoRequest(BaseModel):
     texto_sujo: Optional[str] = None
     imagem_base64: Optional[str] = None
     api_key: Optional[str] = None  # Gemini key para roteamento em nuvem
+    modelo: Optional[str] = None
 
 class TextoResponse(BaseModel):
     resultado: str
@@ -536,10 +789,12 @@ class TraduzirRequest(BaseModel):
     texto_ingles: Optional[str] = None
     imagem_base64: Optional[str] = None
     api_key: Optional[str] = None  # Gemini key para roteamento em nuvem
+    modelo: Optional[str] = None   # Modelo específico Ollama (ex: "phi3:mini", "llama3.2:3b", "llama3")
 
 class TraducaoResponse(BaseModel):
     texto_ingles: str
     traducao_portugues: str
+    modelo_usado: Optional[str] = None
 
 class TranscricaoResponse(BaseModel):
     texto_transcrito: str
@@ -558,6 +813,8 @@ class AvaliarPronunciaRequest(BaseModel):
     texto_esperado: str
     texto_falado: str
     nivel: Optional[str] = "intermediario"
+    modelo: Optional[str] = None
+    api_key: Optional[str] = None
 
 class AvaliarPronunciaResponse(BaseModel):
     nota: int
@@ -605,6 +862,31 @@ async def listar_vozes():
     return [{"id": k, "nome": v} for k, v in VOZES_DISPONIVEIS.items()]
 
 
+@app.get("/modelos_status", tags=["Health"])
+async def modelos_status():
+    """Retorna o status do Ollama local e disponibilidade dos modelos de cada tier."""
+    instalados = _obter_modelos_instalados()
+    ollama_ok = len(instalados) > 0
+    if not ollama_ok:
+        try:
+            ollama.list()
+            ollama_ok = True
+        except Exception:
+            ollama_ok = False
+
+    tem_phi3 = any("phi3" in inst for inst in instalados)
+    tem_llama32 = any("llama3.2" in inst for inst in instalados)
+    tem_llama3 = any(inst.startswith("llama3:") or inst == "llama3" for inst in instalados if not inst.startswith("llama3.2"))
+
+    return {
+        "ollama_online": ollama_ok,
+        "modelos_instalados": instalados,
+        "tem_phi3": tem_phi3,
+        "tem_llama32": tem_llama32,
+        "tem_llama3": tem_llama3,
+    }
+
+
 @app.post("/falar", response_model=FalarResponse, tags=["TTS"])
 async def falar_texto(body: FalarRequest):
     """
@@ -631,20 +913,20 @@ async def parar_audio():
 @app.post("/traduzir", response_model=TraducaoResponse, tags=["Traducao"])
 async def traduzir(body: TraduzirRequest):
     """Traducao tecnica EN→PT com correcao de OCR embutida.
-    Usa Gemini (nuvem, leve) se api_key disponivel, senao Ollama (local)."""
+    Usa Gemini (nuvem, leve) se api_key disponivel, senao Ollama (local) com modelo especifico."""
     if not body.texto_ingles and not body.imagem_base64:
         raise HTTPException(status_code=422, detail="Envie 'texto_ingles' ou 'imagem_base64'.")
 
     gemini_key = (body.api_key or os.environ.get("GEMINI_API_KEY", "")).strip() or None
     try:
-        texto_en, traducao_pt = await asyncio.to_thread(
-            _traduzir_sync, body.texto_ingles, body.imagem_base64, gemini_key
+        texto_en, traducao_pt, modelo_usado = await asyncio.to_thread(
+            _traduzir_sync, body.texto_ingles, body.imagem_base64, gemini_key, body.modelo
         )
     except Exception as exc:
         log.error(f"[/traduzir] Erro: {exc}")
         raise HTTPException(status_code=500, detail=f"Erro na traducao: {exc}")
 
-    return TraducaoResponse(texto_ingles=texto_en, traducao_portugues=traducao_pt)
+    return TraducaoResponse(texto_ingles=texto_en, traducao_portugues=traducao_pt, modelo_usado=modelo_usado)
 
 
 @app.post("/limpar_ocr", response_model=TextoResponse, tags=["OCR"])
@@ -657,7 +939,7 @@ async def limpar_ocr(body: TextoSujoRequest):
     gemini_key = (body.api_key or os.environ.get("GEMINI_API_KEY", "")).strip() or None
     try:
         resultado = await asyncio.to_thread(
-            _limpar_ocr_sync, body.texto_sujo, body.imagem_base64, gemini_key
+            _limpar_ocr_sync, body.texto_sujo, body.imagem_base64, gemini_key, body.modelo
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Erro no OCR/IA: {exc}")
@@ -672,6 +954,12 @@ async def iniciar_gravacao():
 
     if _gravando:
         raise HTTPException(status_code=409, detail="Já há uma gravação em andamento.")
+
+    try:
+        sd.check_input_settings()
+    except Exception as exc:
+        log.warning(f"[Microfone] Nenhum dispositivo de gravação disponível: {exc}")
+        raise HTTPException(status_code=503, detail="Nenhum dispositivo de microfone disponível ou permissão de áudio negada.")
 
     _stop_event.clear()
     _gravando = True
@@ -704,10 +992,16 @@ async def parar_gravacao(idioma: str = "en"):
     log.info(f"[Whisper] Transcrevendo {len(audio_array)/16000:.1f}s de áudio em inglês...")
 
     def _transcrever():
-        # Transcrição em inglês para avaliação de pronúncia
-        return _modelo_whisper.transcribe(audio_array, language=idioma)["text"].strip()
+        mod = _obter_modelo_whisper()
+        if mod is None:
+            raise RuntimeError("Módulo de reconhecimento de voz (Whisper) indisponível.")
+        return mod.transcribe(audio_array, language=idioma)["text"].strip()
 
-    texto = await asyncio.to_thread(_transcrever)
+    try:
+        texto = await asyncio.to_thread(_transcrever)
+    except Exception as exc:
+        log.error(f"[Whisper] Erro ao transcrever áudio: {exc}")
+        raise HTTPException(status_code=503, detail=f"Erro no Whisper: {exc}")
     log.info(f"[Whisper] Transcrição: '{texto}'")
 
     if not texto:
@@ -730,7 +1024,9 @@ async def avaliar_pronuncia(body: AvaliarPronunciaRequest):
             _avaliar_pronuncia_sync, 
             body.texto_esperado, 
             body.texto_falado, 
-            body.nivel or "intermediario"
+            body.nivel or "intermediario",
+            body.modelo,
+            body.api_key
         )
     except Exception as exc:
         log.error(f"[/avaliar_pronuncia] Erro: {exc}")
@@ -743,16 +1039,16 @@ async def avaliar_pronuncia(body: AvaliarPronunciaRequest):
 # Assistente Técnico / Chat IA Multimodal (Gemini & Ollama)
 # ---------------------------------------------------------------------------
 async def _chamar_gemini_chat_async(mensagem: str, imagem_base64: Optional[str], historico: List[ChatMensagem], api_key: str, modelo: Optional[str]) -> str:
-    # Mapeamento para modelos validos atualmente na API do Google (v1beta)
-    # gemini-3.8-flash e o modelo recomendado pela propria Google como substituto
     mod = (modelo or "").lower().strip()
-    VALIDOS = {"gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.8-flash-lite", "gemini-3.0-flash"}
-    if not mod or mod not in VALIDOS:
-        modelo_escolhido = "gemini-3.8-flash"
-    else:
-        modelo_escolhido = mod
-
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo_escolhido}:generateContent?key={api_key}"
+    candidatos = []
+    if mod and mod.startswith("gemini-"):
+        candidatos.append(mod)
+    env_mod = os.environ.get("GEMINI_CHAT_MODEL", "gemini-3.5-flash-lite")
+    if env_mod not in candidatos:
+        candidatos.append(env_mod)
+    for reserva in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.8-flash"]:
+        if reserva not in candidatos:
+            candidatos.append(reserva)
     
     system_instruction = (
         "Você é um engenheiro sênior e tutor especialista em Engenharia Elétrica, Eletrônica, Telecomunicações e Computação. "
@@ -776,8 +1072,8 @@ async def _chamar_gemini_chat_async(mensagem: str, imagem_base64: Optional[str],
             raw_b64 = raw_b64[7:]
         raw_b64 = raw_b64.strip()
         current_parts.append({
-            "inline_data": {
-                "mime_type": "image/png",
+            "inlineData": {
+                "mimeType": "image/png",
                 "data": raw_b64
             }
         })
@@ -795,38 +1091,51 @@ async def _chamar_gemini_chat_async(mensagem: str, imagem_base64: Optional[str],
             "maxOutputTokens": 2048
         }
     }
-    
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(url, json=payload)
-            if resp.status_code != 200:
+
+    client = _obter_http_client()
+    ultimo_erro = ""
+
+    for modelo_escolhido in candidatos:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo_escolhido}:generateContent?key={api_key}"
+        try:
+            resp = await client.post(url, json=payload, timeout=25.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                cand = data.get("candidates", [{}])[0]
+                parts = cand.get("content", {}).get("parts", [])
+                resposta_texto = "\n".join(p.get("text", "") for p in parts if "text" in p).strip()
+                if resposta_texto:
+                    return resposta_texto
+            elif resp.status_code in (503, 429):
+                log.warning(f"[Gemini Chat] {modelo_escolhido} em alta demanda ({resp.status_code}). Alternando...")
+                ultimo_erro = f"{modelo_escolhido} em alta demanda"
+                continue
+            else:
                 err_text = resp.text
-                log.error(f"[Gemini API] Erro {resp.status_code}: {err_text}")
+                log.error(f"[Gemini API] Erro {resp.status_code} em {modelo_escolhido}: {err_text}")
                 try:
                     err_json = resp.json()
                     msg_google = err_json.get("error", {}).get("message", err_text)
                     status_google = err_json.get("error", {}).get("status", "")
                     if "API_KEY_INVALID" in msg_google or "API key not valid" in msg_google:
                         return "⚠️ **Chave de API do Gemini inválida.**\n\nPor favor, verifique se copiou a chave corretamente no [Google AI Studio](https://aistudio.google.com/app/apikey) e configure-a novamente no botão **⚙️ Chaves/API**."
-                    elif "RESOURCE_EXHAUSTED" in status_google or "quota" in msg_google.lower():
-                        return "⚠️ **Limite temporário de requisições excedido.**\n\nA cota gratuita por minuto do Gemini foi atingida. Aguarde cerca de 20 a 30 segundos e envie sua pergunta novamente."
                     elif "NOT_FOUND" in status_google or "not found" in msg_google.lower() or "no longer available" in msg_google.lower():
-                        return f"Modelo Gemini nao disponivel ({modelo_escolhido}).\n\nErro: {msg_google}\n\nSelecione o modelo gemini-3.8-flash em Configurar API."
-                    return f"⚠️ **Erro na API do Google Gemini ({resp.status_code}):**\n\n{msg_google}"
+                        continue
                 except Exception:
-                    return f"⚠️ **Erro na API do Google Gemini ({resp.status_code}):**\n\n{err_text}"
+                    pass
+                ultimo_erro = err_text
+        except httpx.ConnectError:
+            return "⚠️ **Erro de conexão com a Internet.**\n\nNão foi possível alcançar os servidores do Google Gemini. Verifique sua conexão de rede."
+        except Exception as exc:
+            log.warning(f"[Gemini Chat] Exceção em {modelo_escolhido}: {exc}. Tentando próximo modelo...")
+            ultimo_erro = str(exc)
 
-            data = resp.json()
-            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except httpx.ConnectError:
-        return "⚠️ **Erro de conexão com a Internet.**\n\nNão foi possível alcançar os servidores do Google Gemini. Verifique sua conexão de rede."
-    except Exception as exc:
-        log.error(f"[Gemini API] Exceção inesperada: {exc}")
-        return f"⚠️ **Erro ao consultar Gemini:** {exc}"
+    return f"⚠️ **Não foi possível obter resposta do Gemini ({ultimo_erro}).**\n\nRecomendamos usar o modelo estável **gemini-3.5-flash-lite** em Configurar API."
 
 
 async def _chamar_ollama_chat_async(mensagem: str, imagem_base64: Optional[str], historico: List[ChatMensagem], modelo: Optional[str]) -> str:
-    modelo_escolhido = modelo or ("llama3.2-vision" if imagem_base64 else "llama3")
+    modelo_preferido = modelo or ("llama3.2-vision" if imagem_base64 else None)
+    modelo_escolhido = _resolver_modelo_ollama(modelo_preferido)
     url = "http://localhost:11434/api/chat"
     
     system_instruction = (
@@ -914,5 +1223,10 @@ async def chat_ia(body: ChatIARequest):
     else:
         resposta = await _chamar_ollama_chat_async(body.mensagem, body.imagem_base64, body.historico, body.modelo)
         return ChatIAResponse(resposta=resposta, provedor_usado="ollama", modelo_usado=body.modelo or "llama3")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
 
 

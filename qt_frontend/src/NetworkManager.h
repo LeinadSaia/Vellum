@@ -39,6 +39,9 @@ public:
     /** GET / (health check) */
     void verificarConexao();
 
+    /** GET /modelos_status (verifica modelos instalados no Ollama) */
+    void verificarModelosStatus();
+
     /** POST /iniciar_gravacao */
     void iniciarGravacao();
 
@@ -46,7 +49,7 @@ public:
     void pararGravacao(const QString &idioma = "en");
 
     /** POST /traduzir */
-    void traduzirDireto(const QString &textoIngles = QString(), const QByteArray &imagemBase64 = QByteArray(), const QString &apiKey = QString());
+    void traduzirDireto(const QString &textoIngles = QString(), const QByteArray &imagemBase64 = QByteArray(), const QString &apiKey = QString(), const QString &modelo = QString());
 
     /** POST /falar (TTS Neural com Edge TTS) */
     void falarTexto(const QString &texto, const QString &voz = "en-US-JennyNeural", const QString &velocidade = "+0%");
@@ -54,8 +57,8 @@ public:
     /** POST /parar_audio */
     void pararAudio();
 
-    /** POST /avaliar_pronuncia (Tutor de fala com nível) */
-    void avaliarPronuncia(const QString &textoEsperado, const QString &textoFalado, const QString &nivel = "intermediario");
+    /** POST /avaliar_pronuncia (Tutor de fala com nível e modelo dinâmico) */
+    void avaliarPronuncia(const QString &textoEsperado, const QString &textoFalado, const QString &nivel = "intermediario", const QString &modelo = QString(), const QString &apiKey = QString());
 
     /** POST /chat_ia (Assistente com IA multimodal para circuitos e dúvidas) */
     void enviarMensagemChat(const QString &mensagem, 
@@ -66,11 +69,12 @@ public:
                             const QString &modelo = QString());
 
 signals:
-    void traducaoDiretaResultado(const QString &textoIngles, const QString &traducaoPortugues);
+    void traducaoDiretaResultado(const QString &textoIngles, const QString &traducaoPortugues, const QString &modeloUsado = QString());
     void limparOcrResultado(const QString &textoPronto);
     void transcricaoResultado(const QString &textoTranscrito);
     void avaliacaoResultado(int nota);
     void servidorOnline(bool online);
+    void modelosStatusRecebido(bool ollamaOnline, bool temPhi3, bool temLlama32, bool temLlama3);
     void gravacaoIniciada();
 
     /** TTS e Tutor */

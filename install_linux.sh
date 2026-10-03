@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# ==============================================================================
+#   Vellum - Instalador Automatizado para Linux
+#   Instala o binário, backend, atalho no menu do sistema e ícone.
+# ==============================================================================
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+INSTALL_PREFIX="${HOME}/.local"
+BIN_DIR="${INSTALL_PREFIX}/bin"
+OPT_DIR="${INSTALL_PREFIX}/share/vellum"
+APP_DIR="${INSTALL_PREFIX}/share/applications"
+ICON_DIR="${INSTALL_PREFIX}/share/icons/hicolor/512x512/apps"
+
+echo "======================================================"
+echo "          Instalador do Vellum (Linux)                "
+echo "======================================================"
+echo "Diretório de instalação: ${OPT_DIR}"
+echo "Executável: ${BIN_DIR}/vellum"
+echo ""
+
+# 1. Compilação do Frontend se necessário
+if [ ! -f "build_linux/Vellum" ]; then
+    echo "[1/4] Compilando Frontend C++ (Qt6)..."
+    cmake -B build_linux -S qt_frontend -DCMAKE_BUILD_TYPE=Release
+    cmake --build build_linux -j"$(nproc)"
+else
+    echo "[1/4] Frontend compilado detectado em build_linux/Vellum."
+fi
+
+# 2. Configuração do ambiente Python
+echo "[2/4] Verificando dependências do backend..."
+if [ ! -d "venv" ]; then
+    echo "      Criando ambiente virtual Python..."
+    python3 -m venv venv
+    ./venv/bin/pip install --upgrade pip
+    ./venv/bin/pip install -r requirements.txt
+else
+    echo "      Ambiente virtual Python detectado."
+fi
+
+# 3. Criação das pastas de destino
+echo "[3/4] Copiando arquivos do aplicativo..."
+mkdir -p "${BIN_DIR}" "${OPT_DIR}" "${APP_DIR}" "${ICON_DIR}"
+
+# Copia arquivos essenciais para ~/.local/share/vellum
+cp "build_linux/Vellum" "${OPT_DIR}/Vellum"
+cp "main.py" "${OPT_DIR}/main.py"
+cp "requirements.txt" "${OPT_DIR}/requirements.txt"
+cp -r "venv" "${OPT_DIR}/"
+
+# Copia ícone oficial
+if [ -f "qt_frontend/resources/app_icon.png" ]; then
+    cp "qt_frontend/resources/app_icon.png" "${ICON_DIR}/vellum.png"
+elif [ -f "LOGO.png" ]; then
+    cp "LOGO.png" "${ICON_DIR}/vellum.png"
+fi
+
+# 4. Criação do script launcher no ~/.local/bin/vellum
+cat << 'EOF' > "${BIN_DIR}/vellum"
+#!/usr/bin/env bash
+BASE_DIR="${HOME}/.local/share/vellum"
+cd "${BASE_DIR}"
+
+# Inicia backend em segundo plano se não estiver rodando
+if ! curl -s http://127.0.0.1:8000/docs >/dev/null 2>&1; then
+    "${BASE_DIR}/venv/bin/python3" -m uvicorn main:app --host 127.0.0.1 --port 8000 >/dev/null 2>&1 &
+    BACKEND_PID=$!
+    cleanup() {
+        kill $BACKEND_PID 2>/dev/null || true
+    }
+    trap cleanup EXIT INT TERM
+    for i in {1..20}; do
+        if curl -s http://127.0.0.1:8000/docs >/dev/null 2>&1; then
+            break
+        fi
+        sleep 0.15
+    done
+fi
+
+export QT_QPA_PLATFORM="wayland;xcb"
+exec "${BASE_DIR}/Vellum" "$@"
+EOF
+chmod +x "${BIN_DIR}/vellum"
+
+# 5. Instalação do arquivo .desktop
+cat << EOF > "${APP_DIR}/vellum.desktop"
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Vellum
+GenericName=Leitor Técnico e Tutor de Inglês
+Comment=Leitor Técnico de PDF e Tutor Inteligente com IA
+Exec=${BIN_DIR}/vellum %f
+Icon=vellum
+Terminal=false
+MimeType=application/pdf;
+Categories=Office;Education;Science;Viewer;
+StartupWMClass=Vellum
+Keywords=PDF;Reader;Technical;English;Translator;Ollama;Gemini;
+EOF
+
+# Atualiza bancos de dados do sistema se disponíveis
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "${APP_DIR}" 2>/dev/null || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -f -t "${INSTALL_PREFIX}/share/icons/hicolor" 2>/dev/null || true
+fi
+
+echo ""
+echo "======================================================"
+echo "    Instalação concluída com sucesso!                 "
+echo "======================================================"
+echo "Você já pode:"
+echo " 1. Abrir o Vellum pelo menu do seu sistema operacional."
+echo " 2. Executar no terminal: vellum [arquivo.pdf]"
+echo " 3. Abrir arquivos PDF com botão direito > Abrir com > Vellum."
+echo ""

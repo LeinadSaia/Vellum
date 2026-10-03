@@ -23,7 +23,7 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=dist_installer
 OutputBaseFilename=Vellum-Setup-Windows-v{#MyAppVersion}
-SetupIconFile=qt_frontend\resources\app_icon.ico
+SetupIconFile=release_windows\app_icon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -38,8 +38,24 @@ CloseApplications=yes
 RestartApplications=no
 
 [Languages]
-Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
-Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "default"; MessagesFile: "compiler:Default.isl"
+
+[Messages]
+SetupAppTitle=Instalador do Vellum
+SetupWindowTitle=Instalador - %1
+WelcomeLabel1=Bem-vindo ao Assistente de Instalação do Vellum
+WelcomeLabel2=Este programa instalará o Vellum no seu computador.%n%nRecomenda-se fechar todos os outros aplicativos antes de continuar.
+SelectDirLabel3=O assistente instalará o Vellum na seguinte pasta.
+SelectDirBrowseLabel=Para continuar, clique em Avançar. Se desejar selecionar uma pasta diferente, clique em Procurar.
+SelectTasksLabel2=Selecione as tarefas adicionais que deseja executar enquanto instala o Vellum:
+ReadyLabel1=O assistente está pronto para começar a instalar o Vellum no seu computador.
+ReadyLabel2a=Clique em Instalar para continuar com a instalação.
+ClickNext=Clique em Avançar para continuar ou Cancelar para sair do instalador.
+ButtonNext=&Avançar >
+ButtonBack=< &Voltar
+ButtonInstall=&Instalar
+ButtonCancel=Cancelar
+ButtonFinish=&Concluir
 
 [Types]
 Name: "recommended"; Description: "Instalação Padrão Recomendada (Vellum + Modelos de Voz Whisper, ~250 MB)"; Flags: iscustom
@@ -78,6 +94,7 @@ Root: HKA; Subkey: "Software\Classes\Vellum.PDF\shell\open\command"; ValueType: 
 
 [UninstallDelete]
 ; Garante remoção completa de quaisquer arquivos residuais gerados durante o uso
+Type: filesandordirs; Name: "{userappdata}\Vellum"
 Type: filesandordirs; Name: "{app}\backend"
 Type: filesandordirs; Name: "{app}"
 

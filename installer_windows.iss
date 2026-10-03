@@ -70,6 +70,7 @@ Name: "custom";      Description: "Instalação Personalizada (Escolha seus mode
 [Components]
 Name: "core";          Description: "Núcleo do Vellum e Backend (Obrigatório)"; Types: recommended full custom; Flags: fixed
 Name: "whisper_base";  Description: "Reconhecimento de Voz Whisper base.en (~139 MB) [Recomendado]"; Types: recommended full custom
+Name: "tesseract";     Description: "OCR Tesseract em Inglês e Português (~60 MB) [Necessário para seleção por retângulo]"; Types: recommended full custom
 Name: "whisper_tiny";  Description: "Reconhecimento de Voz Whisper tiny.en (~73 MB) [Ultrarrápido]"; Types: recommended full custom
 Name: "ia_phi3";       Description: "IA Offline Básica — phi3:mini (~2.2 GB) [Opcional - Requer Ollama]"; Types: full
 Name: "ia_llama32";    Description: "IA Offline Equilibrada — llama3.2:3b (~2.0 GB) [Opcional - Requer Ollama]"; Types: full
@@ -84,6 +85,7 @@ Name: "associatepdf"; Description: "Associar o Vellum como leitor padrão para a
 Source: "release_windows\Vellum.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "release_windows\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "Vellum.exe"
 Source: "download_models.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "install_tesseract.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app_icon.ico"
@@ -105,6 +107,7 @@ Type: filesandordirs; Name: "{app}"
 
 [Run]
 ; Download dos modelos opcionais selecionados pelo usuário
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install_tesseract.ps1"" -InstallDir ""{app}\Tesseract-OCR"""; Components: tesseract; StatusMsg: "Instalando OCR Tesseract (Inglês e Português)..."; Flags: runhidden
 Filename: "{app}\download_models.bat"; Parameters: "/whisper-base"; Components: whisper_base; StatusMsg: "Baixando modelo Whisper base.en (139 MB)..."; Flags: runhidden
 Filename: "{app}\download_models.bat"; Parameters: "/whisper-tiny"; Components: whisper_tiny; StatusMsg: "Baixando modelo Whisper tiny.en (73 MB)..."; Flags: runhidden
 Filename: "{app}\download_models.bat"; Parameters: "/phi3"; Components: ia_phi3; StatusMsg: "Baixando modelo phi3:mini via Ollama..."; Flags: runhidden

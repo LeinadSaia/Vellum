@@ -321,6 +321,20 @@ def _pre_processar_ocr_engenharia(texto: str) -> str:
     texto = re.sub(r'[ \t]{2,}', ' ', texto)
     return texto.strip()
 
+_LANG_OCR_CACHE: Optional[str] = None
+
+def _idioma_ocr() -> str:
+    """Retorna 'eng+por' se ambos os pacotes existirem no Tesseract; senão 'eng'."""
+    global _LANG_OCR_CACHE
+    if _LANG_OCR_CACHE is None:
+        try:
+            disponiveis = set(pytesseract.get_languages(config=''))
+            idiomas = [l for l in ('eng', 'por') if l in disponiveis]
+            _LANG_OCR_CACHE = '+'.join(idiomas) if idiomas else 'eng'
+        except Exception:
+            return 'eng'
+    return _LANG_OCR_CACHE
+
 def _extrair_texto_imagem(imagem_base64: str) -> str:
     """
     Extrai texto de imagem com velocidade e fidelidade aprimoradas para livros escaneados:
@@ -345,12 +359,13 @@ def _extrair_texto_imagem(imagem_base64: str) -> str:
 
     # --dpi 300 e -c tessedit_do_invert=0 removem o atraso de estimativa de resolucao do Tesseract
     config_otimizada = '--psm 6 --oem 1 --dpi 300 -c tessedit_do_invert=0'
+    lang_ocr = _idioma_ocr()
     try:
-        texto = pytesseract.image_to_string(img_proc, lang='eng', config=config_otimizada).strip()
+        texto = pytesseract.image_to_string(img_proc, lang=lang_ocr, config=config_otimizada).strip()
 
         # Fallback se vier quase vazio (ex: tabela ou diagrama isolado)
         if len(texto) < 4 and (image.width > 50 and image.height > 25):
-            texto = pytesseract.image_to_string(img_proc, lang='eng', config='--psm 4 --oem 1 --dpi 300 -c tessedit_do_invert=0').strip()
+            texto = pytesseract.image_to_string(img_proc, lang=lang_ocr, config='--psm 4 --oem 1 --dpi 300 -c tessedit_do_invert=0').strip()
     except pytesseract.TesseractNotFoundError:
         log.warning("[OCR] Tesseract não encontrado no sistema.")
         return "[Aviso: Tesseract OCR não foi detectado no sistema. Instale o Tesseract ou verifique o instalador para OCR de imagem.]"

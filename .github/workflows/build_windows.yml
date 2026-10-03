@@ -108,15 +108,30 @@ jobs:
           }
           Get-ChildItem -Path dist_installer
 
+      - name: Create Portable Zip Package
+        shell: pwsh
+        run: |
+          Copy-Item "download_models.bat" "release_windows\" -Force
+          Copy-Item "install_tesseract.ps1" "release_windows\" -Force
+          New-Item -ItemType Directory -Force -Path "temp_portable\Vellum"
+          Copy-Item -Recurse -Force "release_windows\*" "temp_portable\Vellum\"
+          Compress-Archive -Path "temp_portable\Vellum" -DestinationPath "dist_installer\Vellum-v1.0.1-Windows-x86_64.zip" -CompressionLevel Optimal
+          Remove-Item -Recurse -Force "temp_portable"
+          Get-ChildItem -Path dist_installer
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Vellum-Setup-Windows
-          path: dist_installer/Vellum-Setup-Windows-v*.exe
+          name: Vellum-Windows-Builds
+          path: |
+            dist_installer/Vellum-Setup-Windows-v*.exe
+            dist_installer/Vellum-*-Windows-x86_64.zip
 
       - name: Release to GitHub
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist_installer/Vellum-Setup-Windows-v*.exe
+          files: |
+            dist_installer/Vellum-Setup-Windows-v*.exe
+            dist_installer/Vellum-*-Windows-x86_64.zip
           token: ${{ secrets.GITHUB_TOKEN }}

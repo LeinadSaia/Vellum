@@ -117,7 +117,13 @@ O script remove o executável, atalhos, ícones e oferece a opção de remover a
 
 ### No Windows 10 / 11
 
-#### Opção A: Instalador Clássico (`Vellum-Setup-Windows.exe`)
+#### Opção A: Versão Portátil ZIP (Recomendada — Baixe, extraia e use)
+Baixe o arquivo compactado `Vellum-v1.0.1-Windows-x86_64.zip` disponível na aba [Releases](https://github.com/thnsm/App-de-tradu-o-e-leitura/releases):
+1. Extraia o arquivo `.zip` para qualquer pasta de sua preferência (ex: em `Documentos` ou `Área de Trabalho`).
+2. Abra a pasta extraída e dê dois cliques em `Vellum.exe`.
+3. Essa versão não requer direitos de administrador, não instala nada no sistema operacional e não sofre bloqueios de políticas restritivas do Smart App Control do Windows 11.
+
+#### Opção B: Instalador Clássico (`Vellum-Setup-Windows-v1.0.1.exe`)
 Baixe a versão executável disponível na aba [Releases](https://github.com/thnsm/App-de-tradu-o-e-leitura/releases) do repositório e execute o instalador. Ele configurará:
 - Atalhos na Área de Trabalho e no Menu Iniciar.
 - Opção de associar o Vellum para abrir arquivos `.pdf` com dois cliques.
@@ -126,7 +132,7 @@ Baixe a versão executável disponível na aba [Releases](https://github.com/thn
 
 > **Aviso sobre o Windows SmartScreen**: Como o Vellum é um projeto de código aberto recém-compilado e distribuído de forma independente (sem certificado comercial de assinatura de código pago), o Windows pode exibir a tela azul "O Windows protegeu o seu computador". Trata-se de um comportamento padrão do sistema para novos binários sem reputação acumulada. Para prosseguir normalmente, clique em **"Mais informações"** e depois no botão **"Executar assim mesmo"**.
 
-#### Opção B: Executar via Script
+#### Opção C: Executar via Script
 Se clonou o código-fonte no Windows:
 ```cmd
 iniciar_tudo.bat

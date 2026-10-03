@@ -52,18 +52,25 @@ echo [5/5] Gerando Instalador com Inno Setup...
 set ISCC="C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 if exist %ISCC% (
     %ISCC% installer_windows.iss
-    echo [SUCESSO] Instalador gerado em %DIST_DIR%\Vellum-Setup-Windows-v1.0.0.exe!
+    echo [SUCESSO] Instalador gerado em %DIST_DIR%\Vellum-Setup-Windows-v1.0.1.exe!
 ) else (
     where iscc >nul 2>nul
     if %errorlevel% equ 0 (
         iscc installer_windows.iss
-        echo [SUCESSO] Instalador gerado em %DIST_DIR%\Vellum-Setup-Windows-v1.0.0.exe!
+        echo [SUCESSO] Instalador gerado em %DIST_DIR%\Vellum-Setup-Windows-v1.0.1.exe!
     ) else (
         echo [INFO] Inno Setup (ISCC.exe) nao encontrado.
         echo        A pasta release_windows\ contem a versao portatil completa pronta para uso!
         echo        Para gerar o instalador executavel (.exe), instale o Inno Setup 6 e execute: iscc installer_windows.iss
     )
 )
+
+echo.
+echo [Extra] Gerando Pacote Portatil (.zip)...
+copy /y "download_models.bat" "%RELEASE_DIR%\"
+copy /y "install_tesseract.ps1" "%RELEASE_DIR%\"
+powershell -Command "Compress-Archive -Path '%RELEASE_DIR%\*' -DestinationPath '%DIST_DIR%\Vellum-v1.0.1-Windows-x86_64.zip' -Force"
+echo [SUCESSO] Pacote portatil gerado em %DIST_DIR%\Vellum-v1.0.1-Windows-x86_64.zip!
 
 echo.
 echo ==============================================================================

@@ -32,10 +32,11 @@ jobs:
           pip install pyinstaller
 
       - name: Setup Qt
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.2'
           arch: 'win64_msvc2019_64'
+          modules: 'qtpdf'
 
       - name: Setup MSVC C++ Compiler
         uses: ilammy/msvc-dev-cmd@v1

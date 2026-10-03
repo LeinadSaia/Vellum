@@ -34,12 +34,24 @@ O **Vellum** foi desenvolvido sob a filosofia de **foco total no documento**. Qu
 
 O Vellum adapta-se automaticamente a qualquer perfil de máquina, desde notebooks simples sem placa de vídeo até estações de trabalho dedicadas:
 
-| Tier | Perfil | Motor de Tradução / Chat | Motor de Voz (Whisper) | Requisitos de Hardware |
-| :---: | :--- | :--- | :--- | :--- |
-| **0** | **Nuvem (Gemini)** *(Padrão)* | Google Gemini (`gemini-3.5-flash-lite`) | Edge TTS + `tiny.en` | Qualquer computador + Conexão à Internet |
-| **1** | **Básico (Leve Local)** | Ollama `phi3:mini` (3.8B) | Whisper `tiny.en` | ~3 a 4 GB RAM, roda liso em CPU |
-| **2** | **Equilibrado** | Ollama `llama3.2:3b` (3B) | Whisper `base.en` | ~6 GB RAM, CPU moderna ou GPU integrada |
-| **3** | **Avançado (Dedicado)** | Ollama `llama3:8b` (8B) | Whisper `base.en` / `small.en` | ~8 a 16 GB RAM ou GPU dedicada (CUDA / Vulkan) |
+| Tier | Perfil | Motor Tradução / Chat | Motor Voz (Whisper) | Consumo RAM | Espaço em Disco (Modelos) |
+| :---: | :--- | :--- | :--- | :---: | :---: |
+| **0** | **Nuvem (Gemini)** *(Padrão)* | Gemini (`gemini-3.5-flash-lite`) | Edge TTS (Nuvem) | **~180 MB** | **0 GB** *(zero downloads locais)* |
+| **1** | **Básico (Leve Local)** | Ollama `phi3:mini` (3.8B) | Whisper `tiny.en` | **~3 a 4 GB** | **~2.3 GB** *(2.2 GB Ollama + 73 MB Whisper)* |
+| **2** | **Equilibrado** | Ollama `llama3.2:3b` (3B) | Whisper `base.en` | **~5 a 6 GB** | **~2.1 GB** *(2.0 GB Ollama + 139 MB Whisper)* |
+| **3** | **Avançado (Dedicado)** | Ollama `llama3:8b` (8B) | Whisper `small.en` | **~9 a 12 GB** | **~5.2 GB** *(4.7 GB Ollama + 462 MB Whisper)* |
+
+### Consumo Total em Disco Conforme a Sua Escolha
+
+O aplicativo base (Frontend C++ compilado + Backend Python) ocupa apenas **~45 MB** (ou **~1.3 MB** no pacote compactado `.tar.gz` para download). Os modelos de IA e voz são opcionais e consomem conforme sua escolha:
+
+| Cenário de Instalação | Modelos Instalados | Espaço em Disco Adicional | Consumo de RAM em Execução | Indicado Para |
+| :--- | :--- | :---: | :---: | :--- |
+| **Apenas Nuvem (Sem IA Local)** | Nenhum (Gemini + Edge TTS) | **0 GB** | **~180 MB** | Qualquer notebook básico, computadores corporativos ou com pouco espaço livre |
+| **Apenas 1 Modelo Local (Básico)** | `phi3:mini` + `tiny.en` | **~2.3 GB** | **~3.5 GB** | PCs com 8 GB de RAM sem GPU dedicada (100% offline) |
+| **Apenas 1 Modelo Local (Equilibrado)** | `llama3.2:3b` + `base.en` | **~2.1 GB** | **~5.5 GB** | PCs modernos com 8 GB a 16 GB de RAM |
+| **Apenas 1 Modelo Local (Avançado)** | `llama3:8b` + `small.en` | **~5.2 GB** | **~10 GB** | PCs de alto desempenho com 16 GB+ de RAM ou placa de vídeo NVIDIA/AMD dedicada |
+| **Todos os Modelos Instalados** | `phi3:mini` + `llama3.2:3b` + `llama3:8b` + todos os Whisper | **~9.6 GB** | **~180 MB a 10 GB** *(varia pelo tier ativo)* | Desenvolvedores ou quem deseja alternar livremente entre todos os modos offline |
 
 > **Degradação Graciosa (Graceful Degradation)**: Se você não tiver o Ollama ou o Whisper instalados, o Vellum opera perfeitamente no modo **Nuvem (Gemini)** sem travar ou emitir erros de inicialização.
 

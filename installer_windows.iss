@@ -36,17 +36,17 @@ Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortugue
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Types]
-Name: "compact"; Description: "Instalação Nuvem / Rápida (~45 MB) — Mais leve e recomendada"; Flags: iscustom
-Name: "full";    Description: "Instalação Completa (Nuvem + Todos os Modelos Locais)"
-Name: "custom";  Description: "Instalação Personalizada (Escolha seus modelos)"
+Name: "recommended"; Description: "Instalação Padrão Recomendada (Vellum + Modelos de Voz Whisper, ~250 MB)"; Flags: iscustom
+Name: "full";        Description: "Instalação Completa (Nuvem + Voz + Todos os Modelos Ollama Locais)"
+Name: "custom";      Description: "Instalação Personalizada (Escolha seus modelos)"
 
 [Components]
-Name: "core";          Description: "Núcleo do Vellum e Backend (Obrigatório)"; Types: compact full custom; Flags: fixed
-Name: "ia_phi3";       Description: "IA Offline Básica — phi3:mini (~2.2 GB) [Requer Ollama]"; Types: full custom; Flags: unchecked
-Name: "ia_llama32";    Description: "IA Offline Equilibrada — llama3.2:3b (~2.0 GB) [Requer Ollama]"; Types: full custom; Flags: unchecked
-Name: "ia_llama3";     Description: "IA Offline Avançada — llama3:8b (~4.7 GB) [Requer Ollama]"; Types: full custom; Flags: unchecked
-Name: "whisper_tiny";  Description: "Modelo de Voz Whisper tiny.en (~73 MB) [Offline]"; Types: full custom; Flags: unchecked
-Name: "whisper_base";  Description: "Modelo de Voz Whisper base.en (~139 MB) [Offline]"; Types: full custom; Flags: unchecked
+Name: "core";          Description: "Núcleo do Vellum e Backend (Obrigatório)"; Types: recommended full custom; Flags: fixed
+Name: "whisper_base";  Description: "Reconhecimento de Voz Whisper base.en (~139 MB) [Recomendado]"; Types: recommended full custom
+Name: "whisper_tiny";  Description: "Reconhecimento de Voz Whisper tiny.en (~73 MB) [Ultrarrápido]"; Types: recommended full custom
+Name: "ia_phi3";       Description: "IA Offline Básica — phi3:mini (~2.2 GB) [Opcional - Requer Ollama]"; Types: full custom; Flags: unchecked
+Name: "ia_llama32";    Description: "IA Offline Equilibrada — llama3.2:3b (~2.0 GB) [Opcional - Requer Ollama]"; Types: full custom; Flags: unchecked
+Name: "ia_llama3";     Description: "IA Offline Avançada — llama3:8b (~4.7 GB) [Opcional - Requer Ollama]"; Types: full custom; Flags: unchecked
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"

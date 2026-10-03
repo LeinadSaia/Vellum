@@ -57,6 +57,11 @@ ButtonInstall=&Instalar
 ButtonCancel=Cancelar
 ButtonFinish=&Concluir
 
+[CustomMessages]
+CreateDesktopIcon=Criar atalho na Área de Trabalho
+AdditionalIcons=Atalhos Adicionais:
+LaunchProgram=Iniciar o %1
+
 [Types]
 Name: "recommended"; Description: "Instalação Padrão Recomendada (Vellum + Modelos de Voz Whisper, ~250 MB)"; Flags: iscustom
 Name: "full";        Description: "Instalação Completa (Nuvem + Voz + Todos os Modelos Ollama Locais)"
@@ -71,7 +76,7 @@ Name: "ia_llama32";    Description: "IA Offline Equilibrada — llama3.2:3b (~2.
 Name: "ia_llama3";     Description: "IA Offline Avançada — llama3:8b (~4.7 GB) [Opcional - Requer Ollama]"; Types: full custom; Flags: unchecked
 
 [Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDescription: "Atalhos Adicionais:"
 Name: "associatepdf"; Description: "Associar o Vellum como leitor padrão para arquivos PDF (.pdf)"; GroupDescription: "Associações de Arquivo:"; Flags: unchecked
 
 [Files]
@@ -107,7 +112,7 @@ Filename: "{app}\download_models.bat"; Parameters: "/llama32"; Components: ia_ll
 Filename: "{app}\download_models.bat"; Parameters: "/llama3"; Components: ia_llama3; StatusMsg: "Baixando modelo llama3:8b via Ollama..."; Flags: runhidden
 
 ; Iniciar o aplicativo ao finalizar
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Iniciar o Vellum agora"; Flags: nowait postinstall skipifsilent
 
 [Code]
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

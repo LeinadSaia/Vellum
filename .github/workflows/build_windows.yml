@@ -101,8 +101,9 @@ jobs:
               throw "Inno Setup compiler (ISCC.exe) not found!"
           }
           Write-Host "Compilando com Inno Setup em: $iscc"
-          & $iscc installer_windows.iss
+          & $iscc installer_windows.iss 2>&1 | Tee-Object -Variable isccOutput
           if ($LASTEXITCODE -ne 0) {
+              $isccOutput | ForEach-Object { Write-Host $_ }
               throw "ISCC compilation failed with code $LASTEXITCODE"
           }
           Get-ChildItem -Path dist_installer

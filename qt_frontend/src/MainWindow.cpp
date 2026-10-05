@@ -37,6 +37,7 @@
 #include <QJsonDocument>
 #include <QStatusBar>
 #include <QStandardItemModel>
+#include <QStandardPaths>
 #include <QColorDialog>
 #include <QTextStream>
 #include <cmath>

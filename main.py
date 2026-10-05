@@ -1242,6 +1242,13 @@ async def chat_ia(body: ChatIARequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Vellum Backend")
+    parser.add_argument("--port", type=int, default=8000, help="Porta para rodar o backend")
+    args = parser.parse_args()
+    
+    log.info(f"Iniciando Vellum Backend na porta {args.port}...")
+    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="info")
 
 

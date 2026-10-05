@@ -21,6 +21,7 @@ set(SOURCES
     src/main.cpp
     src/MainWindow.cpp
     src/NetworkManager.cpp
+    src/DependencyManager.cpp
     resources.qrc
 )
 
@@ -31,6 +32,7 @@ endif()
 set(HEADERS
     src/MainWindow.h
     src/NetworkManager.h
+    src/DependencyManager.h
 )
 
 qt_add_executable(Vellum

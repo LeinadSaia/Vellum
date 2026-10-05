@@ -3586,7 +3586,8 @@ void MainWindow::verificarEIniciarBackend()
 
     m_backendProcess->setWorkingDirectory(workingDir);
     appendLog(QString("Iniciando motor de IA na porta %1...").arg(m_backendPort), "info");
-    args << "--port" << QString::number(m_backendPort);
+    args << "--port" << QString::number(m_backendPort)
+         << "--ppid" << QString::number(QCoreApplication::applicationPid());
     m_backendProcess->start(execPath, args);
 
     // Tenta pingar a conexão gradualmente

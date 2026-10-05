@@ -173,12 +173,28 @@ _MAX_CACHE = 128
 _modelo_whisper = None
 _whisper_lock = threading.Lock()
 _whisper_carregado_nome: Optional[str] = None
+_whisper_ultima_atividade: float = 0.0
+
+def _liberar_memoria_whisper():
+    global _modelo_whisper, _whisper_carregado_nome
+    with _whisper_lock:
+        if _modelo_whisper is not None:
+            log.info(f"[Memória] Liberando modelo Whisper '{_whisper_carregado_nome}' da memória por inatividade...")
+            _modelo_whisper = None
+            _whisper_carregado_nome = None
+            import gc
+            import torch
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            log.info("[Memória] Whisper descarregado com sucesso.")
 
 def _obter_modelo_whisper(nome_modelo: Optional[str] = None):
     """Carrega o modelo Whisper apenas quando for solicitado pelo Tutor de pronúncia."""
-    global _modelo_whisper, _whisper_carregado_nome
+    global _modelo_whisper, _whisper_carregado_nome, _whisper_ultima_atividade
     nome_alvo = nome_modelo or os.getenv("WHISPER_MODEL", WHISPER_MODEL_NAME)
     with _whisper_lock:
+        _whisper_ultima_atividade = time.time()
         if _modelo_whisper is not None and _whisper_carregado_nome == nome_alvo:
             return _modelo_whisper
 
@@ -1007,6 +1023,8 @@ async def parar_gravacao(idioma: str = "en"):
     log.info(f"[Whisper] Transcrevendo {len(audio_array)/16000:.1f}s de áudio em inglês...")
 
     def _transcrever():
+        global _whisper_ultima_atividade
+        _whisper_ultima_atividade = time.time()
         mod = _obter_modelo_whisper()
         if mod is None:
             raise RuntimeError("Módulo de reconhecimento de voz (Whisper) indisponível.")
@@ -1243,12 +1261,32 @@ async def chat_ia(body: ChatIARequest):
 if __name__ == "__main__":
     import uvicorn
     import argparse
+    import psutil
+    import time
     
     parser = argparse.ArgumentParser(description="Vellum Backend")
     parser.add_argument("--port", type=int, default=8000, help="Porta para rodar o backend")
+    parser.add_argument("--ppid", type=int, default=None, help="PID do processo pai (Frontend) para monitoramento (Watchdog)")
     args = parser.parse_args()
     
+    # Thread do Watchdog e Gerenciamento de Memória
+    def watchdog_and_memory_manager():
+        while True:
+            time.sleep(5)
+            # 1. Watchdog: Verifica se o processo pai ainda existe
+            if args.ppid is not None:
+                if not psutil.pid_exists(args.ppid):
+                    log.error(f"[Watchdog] Processo pai (PID {args.ppid}) não encontrado. Encerrando backend para evitar processos zumbis.")
+                    os._exit(0)
+            
+            # 2. Gerenciamento de Memória: Descarrega o Whisper após 5 minutos de inatividade
+            global _whisper_ultima_atividade, _modelo_whisper
+            if _modelo_whisper is not None and (time.time() - _whisper_ultima_atividade > 300):
+                _liberar_memoria_whisper()
+
+    manager_thread = threading.Thread(target=watchdog_and_memory_manager, daemon=True)
+    manager_thread.start()
+
     log.info(f"Iniciando Vellum Backend na porta {args.port}...")
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="info")
-
 

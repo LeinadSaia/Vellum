@@ -96,7 +96,15 @@ O projeto adota uma arquitetura avançada em duas camadas, focada em estabilidad
 ### No Linux (Ubuntu, Debian, Fedora, Arch, etc.)
 
 #### Opção A: Instalador Automatizado (Recomendado)
-Para compilar o Frontend, baixar as dependências e integrar o Vellum diretamente no menu do seu sistema operacional (`.desktop`), rode:
+Para compilar o Frontend, baixar as dependências e integrar o Vellum diretamente no menu do seu sistema operacional (`.desktop`), siga os passos abaixo.
+
+Primeiro, certifique-se de que possui os pacotes de compilação instalados (exemplo para Ubuntu/Debian):
+```bash
+sudo apt update
+sudo apt install -y build-essential cmake qt6-base-dev qt6-multimedia-dev libqt6svg6-dev python3-venv tesseract-ocr
+```
+
+Em seguida, clone o repositório e execute o instalador:
 ```bash
 git clone https://github.com/LeinadSaia/Vellum.git Vellum
 cd Vellum

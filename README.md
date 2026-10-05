@@ -72,7 +72,7 @@ O projeto adota uma arquitetura desacoplada em duas camadas:
 │  - Bloco de notas formatado & gerenciador de atalhos        │
 └──────────────────────────────┬──────────────────────────────┘
                                │ Requisições REST Assíncronas
-                               ▼ (porta local 8000)
+                               ▼ (porta dinâmica automática)
 ┌─────────────────────────────────────────────────────────────┐
 │                 BACKEND (Python / FastAPI)                  │
 │  - Lazy Loading do Whisper (boot ultra rápido em ~1.5s)     │
@@ -101,10 +101,6 @@ Após isso, basta abrir o **Vellum** pelo lançador de aplicativos do sistema ou
 vellum livro.pdf
 ```
 
-#### Opção B: Execução Portátil Rápida (Sem Instalar)
-```bash
-./iniciar_tudo.sh
-```
 
 #### Como Desinstalar no Linux
 Diferente de outros aplicativos, o Vellum preza por deixar o seu sistema limpo. Para desinstalar completamente:
@@ -132,11 +128,6 @@ Baixe a versão executável disponível na aba [Releases](https://github.com/thn
 
 > **Aviso sobre o Windows SmartScreen**: Como o Vellum é um projeto de código aberto recém-compilado e distribuído de forma independente (sem certificado comercial de assinatura de código pago), o Windows pode exibir a tela azul "O Windows protegeu o seu computador". Trata-se de um comportamento padrão do sistema para novos binários sem reputação acumulada. Para prosseguir normalmente, clique em **"Mais informações"** e depois no botão **"Executar assim mesmo"**.
 
-#### Opção C: Executar via Script
-Se clonou o código-fonte no Windows:
-```cmd
-iniciar_tudo.bat
-```
 
 #### Como Desinstalar no Windows
 O Vellum cria um desinstalador dedicado e transparente:

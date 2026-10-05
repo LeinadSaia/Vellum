@@ -324,6 +324,7 @@ private:
     // ── Empty State & Gerenciamento do Motor Backend ──────────────────────
     QWidget         *m_emptyStateWidget     = nullptr;
     QProcess        *m_backendProcess       = nullptr;
+    quint16          m_backendPort          = 8000;
     void atualizarVisibilidadeEmptyState();
     void verificarEIniciarBackend();
     void pararBackend();

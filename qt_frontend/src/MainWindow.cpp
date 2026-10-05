@@ -41,6 +41,8 @@
 #include <QTextStream>
 #include <cmath>
 
+#include <QTcpServer>
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Construtor e Inicialização
 // ═════════════════════════════════════════════════════════════════════════════
@@ -55,7 +57,12 @@ MainWindow::MainWindow(QWidget *parent)
     m_timerProgresso = new QTimer(this);
     connect(m_timerProgresso, &QTimer::timeout, this, &MainWindow::atualizarProgressoPasso);
 
-    m_net = new NetworkManager("http://localhost:8000", this);
+    QTcpServer tempServer;
+    if (tempServer.listen(QHostAddress::LocalHost, 0)) {
+        m_backendPort = tempServer.serverPort();
+        tempServer.close();
+    }
+    m_net = new NetworkManager(QString("http://localhost:%1").arg(m_backendPort), this);
 
     setupMenuBar();
     setupUi();
@@ -3578,7 +3585,8 @@ void MainWindow::verificarEIniciarBackend()
     }
 
     m_backendProcess->setWorkingDirectory(workingDir);
-    appendLog(QString("Iniciando motor de IA em segundo plano (%1)...").arg(QFileInfo(execPath).fileName()), "info");
+    appendLog(QString("Iniciando motor de IA na porta %1...").arg(m_backendPort), "info");
+    args << "--port" << QString::number(m_backendPort);
     m_backendProcess->start(execPath, args);
 
     // Tenta pingar a conexão gradualmente

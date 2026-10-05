@@ -103,17 +103,17 @@ Primeiro, certifique-se de que possui os pacotes de compilação instalados (esc
 **Ubuntu / Debian / Pop!_OS / Mint:**
 ```bash
 sudo apt update
-sudo apt install -y build-essential cmake qt6-base-dev qt6-multimedia-dev libqt6svg6-dev python3-venv tesseract-ocr
+sudo apt install -y build-essential cmake qt6-base-dev qt6-multimedia-dev libqt6svg6-dev qt6-pdf-dev python3-venv tesseract-ocr
 ```
 
 **Fedora:**
 ```bash
-sudo dnf install -y gcc-c++ cmake qt6-qtbase-devel qt6-qtmultimedia-devel qt6-qtsvg-devel python3 tesseract
+sudo dnf install -y gcc-c++ cmake qt6-qtbase-devel qt6-qtmultimedia-devel qt6-qtsvg-devel qt6-qtwebengine-devel python3 tesseract
 ```
 
 **Arch Linux / Manjaro:**
 ```bash
-sudo pacman -S --needed base-devel cmake qt6-base qt6-multimedia qt6-svg python tesseract
+sudo pacman -S --needed base-devel cmake qt6-base qt6-multimedia qt6-svg qt6-webengine python tesseract
 ```
 
 Em seguida, clone o repositório e execute o instalador:

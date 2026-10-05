@@ -98,10 +98,22 @@ O projeto adota uma arquitetura avançada em duas camadas, focada em estabilidad
 #### Opção A: Instalador Automatizado (Recomendado)
 Para compilar o Frontend, baixar as dependências e integrar o Vellum diretamente no menu do seu sistema operacional (`.desktop`), siga os passos abaixo.
 
-Primeiro, certifique-se de que possui os pacotes de compilação instalados (exemplo para Ubuntu/Debian):
+Primeiro, certifique-se de que possui os pacotes de compilação instalados (escolha o comando de acordo com sua distribuição):
+
+**Ubuntu / Debian / Pop!_OS / Mint:**
 ```bash
 sudo apt update
 sudo apt install -y build-essential cmake qt6-base-dev qt6-multimedia-dev libqt6svg6-dev python3-venv tesseract-ocr
+```
+
+**Fedora:**
+```bash
+sudo dnf install -y gcc-c++ cmake qt6-qtbase-devel qt6-qtmultimedia-devel qt6-qtsvg-devel python3 tesseract
+```
+
+**Arch Linux / Manjaro:**
+```bash
+sudo pacman -S --needed base-devel cmake qt6-base qt6-multimedia qt6-svg python tesseract
 ```
 
 Em seguida, clone o repositório e execute o instalador:

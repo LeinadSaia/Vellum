@@ -30,11 +30,19 @@ echo ""
 # 1. Compilação do Frontend se necessário
 if [ ! -f "build_linux/Vellum" ]; then
     echo "[1/5] Compilando Frontend C++ (Qt6)..."
-    
     if ! command -v cmake >/dev/null 2>&1; then
         echo -e "\n[ERRO] O comando 'cmake' não foi encontrado."
-        echo "Para instalar o Vellum a partir do código fonte, instale as dependências executando:"
-        echo "sudo apt update && sudo apt install -y build-essential cmake qt6-base-dev qt6-multimedia-dev libqt6svg6-dev python3-venv tesseract-ocr"
+        echo "Para instalar o Vellum a partir do código fonte, instale as dependências executando o comando para o seu sistema:"
+        echo ""
+        echo "👉 Ubuntu / Debian / Pop!_OS / Mint:"
+        echo "   sudo apt update && sudo apt install -y build-essential cmake qt6-base-dev qt6-multimedia-dev libqt6svg6-dev python3-venv tesseract-ocr"
+        echo ""
+        echo "👉 Fedora:"
+        echo "   sudo dnf install -y gcc-c++ cmake qt6-qtbase-devel qt6-qtmultimedia-devel qt6-qtsvg-devel python3 tesseract"
+        echo ""
+        echo "👉 Arch Linux / Manjaro:"
+        echo "   sudo pacman -S --needed base-devel cmake qt6-base qt6-multimedia qt6-svg python tesseract"
+        echo ""
         echo "Após a instalação, tente rodar este script novamente."
         exit 1
     fi

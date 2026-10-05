@@ -106,67 +106,8 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache -f -t "${INSTALL_PREFIX}/share/icons/hicolor" 2>/dev/null || true
 fi
 
-# 6. Assistente de Modelos Opcionais (Modularidade de Instalação)
-echo "[4/5] Configuração de Modelos Opcionais..."
-if [ "$AUTO_YES" = false ] && [ -t 0 ]; then
-    # Modelos Whisper (Voz)
-    echo ""
-    read -p "Deseja baixar os modelos Whisper para prática de fala offline (~210 MB)? [S/n]: " RESP_VOZ
-    RESP_VOZ=${RESP_VOZ:-S}
-    if [[ "$RESP_VOZ" =~ ^[sS]$ ]]; then
-        echo "Baixando modelos Whisper para ~/.cache/whisper..."
-        mkdir -p "${HOME}/.cache/whisper"
-        if [ ! -f "${HOME}/.cache/whisper/base.en.pt" ]; then
-            curl -L -o "${HOME}/.cache/whisper/base.en.pt" "https://openaipublic.azureedge.net/main/whisper/models/256150255c601dbb170ef89248a8458ad4cf37081fa97e5b2eb5de50d1da676e/base.en.pt"
-        fi
-        if [ ! -f "${HOME}/.cache/whisper/tiny.en.pt" ]; then
-            curl -L -o "${HOME}/.cache/whisper/tiny.en.pt" "https://openaipublic.azureedge.net/main/whisper/models/d3dd57d32accea0b295c96e26691aa14d8822fac7d9d27d5dc00ba0adc22e8dd/tiny.en.pt"
-        fi
-        echo "Modelos Whisper prontos."
-    fi
-
-    # Modelos Ollama (IA Local)
-    echo ""
-    echo "Deseja baixar algum modelo de IA local offline via Ollama?"
-    echo "  1) Básico:     phi3:mini   (~2.2 GB) — Ideal para CPUs comuns e 4-8 GB RAM"
-    echo "  2) Equilibrado: llama3.2:3b (~2.0 GB) — Ideal para CPUs modernas e 8 GB RAM"
-    echo "  3) Avançado:   llama3:8b   (~4.7 GB) — Para PCs potentes / GPU dedicada"
-    echo "  4) Pular       (Usar apenas Nuvem / Gemini por padrão)"
-    read -p "Escolha uma opção [1-4, padrão=4]: " OPT_OLLAMA
-    OPT_OLLAMA=${OPT_OLLAMA:-4}
-
-    case "$OPT_OLLAMA" in
-        1)
-            if command -v ollama >/dev/null 2>&1; then
-                echo "Baixando phi3:mini via Ollama..."
-                ollama pull phi3:mini || true
-            else
-                echo "[INFO] Ollama não detectado no sistema. Baixe em https://ollama.com e execute: ollama pull phi3:mini"
-            fi
-            ;;
-        2)
-            if command -v ollama >/dev/null 2>&1; then
-                echo "Baixando llama3.2:3b via Ollama..."
-                ollama pull llama3.2:3b || true
-            else
-                echo "[INFO] Ollama não detectado no sistema. Baixe em https://ollama.com e execute: ollama pull llama3.2:3b"
-            fi
-            ;;
-        3)
-            if command -v ollama >/dev/null 2>&1; then
-                echo "Baixando llama3:8b via Ollama..."
-                ollama pull llama3:8b || true
-            else
-                echo "[INFO] Ollama não detectado no sistema. Baixe em https://ollama.com e execute: ollama pull llama3:8b"
-            fi
-            ;;
-        *)
-            echo "Nenhum modelo Ollama selecionado. Modo Nuvem (Gemini) configurado como padrão."
-            ;;
-    esac
-else
-    echo "Modo automático / padrão ativado. Modelos pesados pulados."
-fi
+# 6. Modelos e Dependências: Gerenciados agora pela própria UI do Vellum (C++)!
+echo "[4/5] Modelos opcionais serão baixados via interface na primeira abertura."
 
 echo ""
 echo "======================================================"

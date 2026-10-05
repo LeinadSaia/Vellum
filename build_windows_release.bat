@@ -67,8 +67,6 @@ if exist %ISCC% (
 
 echo.
 echo [Extra] Gerando Pacote Portatil (.zip)...
-copy /y "download_models.bat" "%RELEASE_DIR%\"
-copy /y "install_tesseract.ps1" "%RELEASE_DIR%\"
 powershell -Command "Compress-Archive -Path '%RELEASE_DIR%\*' -DestinationPath '%DIST_DIR%\Vellum-v1.0.1-Windows-x86_64.zip' -Force"
 echo [SUCESSO] Pacote portatil gerado em %DIST_DIR%\Vellum-v1.0.1-Windows-x86_64.zip!
 

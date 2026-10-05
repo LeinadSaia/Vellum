@@ -25,9 +25,15 @@ bool DependencyManager::checkDependencies() const
 #ifdef Q_OS_WIN
     QString tesseractDir = QCoreApplication::applicationDirPath() + "/Tesseract-OCR";
     bool tesseractExists = QFile::exists(tesseractDir + "/tesseract.exe") && QFile::exists(tesseractDir + "/tessdata/por.traineddata");
-    return tinyExists && baseExists && tesseractExists;
+    
+    // Check for Ollama
+    QString ollamaPath = QStandardPaths::writableLocation(QStandardPaths::LocalAppDataLocation) + "/Programs/Ollama/ollama.exe";
+    bool ollamaExists = QFile::exists(ollamaPath) || QProcess::execute("where", {"ollama"}) == 0;
+
+    return tinyExists && baseExists && tesseractExists && ollamaExists;
 #else
-    return tinyExists && baseExists;
+    bool ollamaExists = QProcess::execute("which", {"ollama"}) == 0;
+    return tinyExists && baseExists && ollamaExists;
 #endif
 }
 
@@ -70,6 +76,26 @@ void DependencyManager::startDownload()
             "Idioma OCR (Português)"
         });
     }
+    
+    QString ollamaPath = QStandardPaths::writableLocation(QStandardPaths::LocalAppDataLocation) + "/Programs/Ollama/ollama.exe";
+    if (!QFile::exists(ollamaPath) && QProcess::execute("where", {"ollama"}) != 0) {
+        m_queue.append({
+            "https://ollama.com/download/OllamaSetup.exe",
+            QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/vellum-ollama-setup.exe",
+            "Servidor de IA (Ollama)"
+        });
+    }
+#else
+    if (QProcess::execute("which", {"ollama"}) != 0) {
+        // No Linux o Ollama usa install script via curl (não é fácil fazer download + instalar via C++ sem bash)
+        // Por simplificação, o Linux assumirá que já está instalado ou pedirá pro usuário.
+        // Se quisermos poderíamos baixar o script e rodar.
+        m_queue.append({
+            "https://ollama.com/install.sh",
+            QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/ollama-install.sh",
+            "Instalador Ollama (Linux)"
+        });
+    }
 #endif
 
     if (m_queue.isEmpty()) {
@@ -102,12 +128,7 @@ void DependencyManager::downloadNext()
             m_progress = nullptr;
         }
 
-#ifdef Q_OS_WIN
-        // Após todos os downloads, instalar o tesseract se o instalador foi baixado
-        installTesseractWindows();
-#else
-        emit finished();
-#endif
+        installExternalDependencies();
         return;
     }
 
@@ -170,20 +191,19 @@ void DependencyManager::onDownloadFinished()
     downloadNext();
 }
 
-void DependencyManager::installTesseractWindows()
+void DependencyManager::installExternalDependencies()
 {
 #ifdef Q_OS_WIN
-    QString setupPath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/vellum-tesseract-setup.exe";
+    QString tessSetup = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/vellum-tesseract-setup.exe";
     QString destDir = QCoreApplication::applicationDirPath() + "/Tesseract-OCR";
 
-    if (QFile::exists(setupPath)) {
+    if (QFile::exists(tessSetup)) {
         if (m_progress) {
             m_progress->setLabelText("Instalando Tesseract OCR (Requer permissão de Administrador)...");
             m_progress->setRange(0, 0); // Indeterminate
             m_progress->show();
         }
 
-        // The setup is an NSIS installer, so /S is silent, /D=Dir sets the directory
         QString args = QString("/S /D=%1").arg(QDir::toNativeSeparators(destDir));
         
         SHELLEXECUTEINFOW shExecInfo = {0};
@@ -191,7 +211,7 @@ void DependencyManager::installTesseractWindows()
         shExecInfo.fMask = SEE_MASK_NOCLOSEPROCESS;
         shExecInfo.hwnd = NULL;
         shExecInfo.lpVerb = L"runas";
-        shExecInfo.lpFile = (LPCWSTR)setupPath.utf16();
+        shExecInfo.lpFile = (LPCWSTR)tessSetup.utf16();
         shExecInfo.lpParameters = (LPCWSTR)args.utf16();
         shExecInfo.lpDirectory = NULL;
         shExecInfo.nShow = SW_HIDE;
@@ -200,11 +220,39 @@ void DependencyManager::installTesseractWindows()
         if (ShellExecuteExW(&shExecInfo)) {
             WaitForSingleObject(shExecInfo.hProcess, INFINITE);
             CloseHandle(shExecInfo.hProcess);
-        } else {
-            // failed to elevate or run
         }
 
-        QFile::remove(setupPath);
+        QFile::remove(tessSetup);
+    }
+    
+    QString ollamaSetup = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/vellum-ollama-setup.exe";
+    if (QFile::exists(ollamaSetup)) {
+        // Run Ollama silent installer
+        QString args = "/SILENT";
+        
+        SHELLEXECUTEINFOW shExecInfo = {0};
+        shExecInfo.cbSize = sizeof(SHELLEXECUTEINFOW);
+        shExecInfo.fMask = SEE_MASK_NOCLOSEPROCESS;
+        shExecInfo.hwnd = NULL;
+        shExecInfo.lpVerb = L"runas"; // Elevate to admin
+        shExecInfo.lpFile = (LPCWSTR)ollamaSetup.utf16();
+        shExecInfo.lpParameters = (LPCWSTR)args.utf16();
+        shExecInfo.lpDirectory = NULL;
+        shExecInfo.nShow = SW_HIDE;
+        shExecInfo.hInstApp = NULL;
+
+        if (ShellExecuteExW(&shExecInfo)) {
+            WaitForSingleObject(shExecInfo.hProcess, INFINITE);
+            CloseHandle(shExecInfo.hProcess);
+        }
+        
+        QFile::remove(ollamaSetup);
+    }
+#else
+    QString ollamaSetup = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/ollama-install.sh";
+    if (QFile::exists(ollamaSetup)) {
+        QProcess::execute("sh", {ollamaSetup});
+        QFile::remove(ollamaSetup);
     }
 #endif
     

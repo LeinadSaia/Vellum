@@ -90,6 +90,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    m_isFechando = true;
     salvarConfiguracoes();
     pararBackend();
     event->accept();
@@ -2858,6 +2859,44 @@ void MainWindow::onModelosStatusRecebido(bool ollamaOnline, bool temPhi3, bool t
         }
     }
     atualizarBadgeModeloAtivo();
+
+    // Auto pull de modelos caso estejam faltando e o perfil exija
+    if (ollamaOnline && m_iaProvedor == "ollama") {
+        if (!temLlama32 && m_ollamaModelTier == "llama3.2:3b") {
+            puxarModeloOllama("llama3.2:3b");
+        } else if (!temPhi3 && m_ollamaModelTier == "phi3:mini") {
+            puxarModeloOllama("phi3:mini");
+        } else if (!temLlama3 && m_ollamaModelTier == "llama3") {
+            puxarModeloOllama("llama3");
+        }
+    }
+}
+
+void MainWindow::puxarModeloOllama(const QString &modelo)
+{
+    if (m_processoOllamaPull && m_processoOllamaPull->state() == QProcess::Running) {
+        return; // Já está baixando algo
+    }
+    
+    if (!m_processoOllamaPull) {
+        m_processoOllamaPull = new QProcess(this);
+        connect(m_processoOllamaPull, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this, modelo](int exitCode, QProcess::ExitStatus) {
+            if (exitCode == 0) {
+                if (m_net) m_net->verificarModelosStatus(); // Atualiza a UI para liberar o modelo
+            }
+        });
+    }
+    
+#ifdef Q_OS_WIN
+    QString ollamaPath = "ollama.exe";
+    QString localAppPath = QStandardPaths::writableLocation(QStandardPaths::LocalAppDataLocation) + "/Programs/Ollama/ollama.exe";
+    if (QFile::exists(localAppPath)) {
+        ollamaPath = localAppPath;
+    }
+    m_processoOllamaPull->start(ollamaPath, QStringList() << "pull" << modelo);
+#else
+    m_processoOllamaPull->start("ollama", QStringList() << "pull" << modelo);
+#endif
 }
 
 void MainWindow::onRequisicaoIniciada(const QString &endpoint)
@@ -2949,10 +2988,27 @@ void MainWindow::appendLog(const QString &mensagem, const QString &tipo)
     if (tipo == "warning") cor = "#fbbf24";
     if (tipo == "success") cor = "#34d399";
 
+    // Mostra na UI
     if (m_logBox) {
         m_logBox->append(QString("<span style='color: #4b5563;'>[%1]</span> <span style='color: %2;'>%3</span>")
                          .arg(timestamp, cor, mensagem.toHtmlEscaped()));
         m_logBox->verticalScrollBar()->setValue(m_logBox->verticalScrollBar()->maximum());
+    }
+    
+    // Grava no arquivo vellum.log
+    QString logPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(logPath);
+    QFile logFile(logPath + "/vellum.log");
+    if (logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        QTextStream out(&logFile);
+        out << "[" << timestamp << "] [" << tipo.toUpper() << "] " << mensagem << "\n";
+        
+        // Rotaciona o log se for maior que 5MB (limita tamanho do arquivo)
+        if (logFile.size() > 5 * 1024 * 1024) {
+            logFile.close();
+            QFile::remove(logPath + "/vellum_old.log");
+            QFile::rename(logPath + "/vellum.log", logPath + "/vellum_old.log");
+        }
     }
 }
 
@@ -3589,12 +3645,60 @@ void MainWindow::verificarEIniciarBackend()
 
     if (!m_backendProcess) {
         m_backendProcess = new QProcess(this);
+        
+        // Capturar logs do backend e direcioná-los para o appendLog
+        connect(m_backendProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+            QByteArray out = m_backendProcess->readAllStandardOutput();
+            // Evitar linhas vazias indesejadas
+            for (const QByteArray &linha : out.split('\n')) {
+                if (!linha.trimmed().isEmpty()) {
+                    appendLog(QString::fromUtf8(linha).trimmed(), "info");
+                }
+            }
+        });
+        connect(m_backendProcess, &QProcess::readyReadStandardError, this, [this]() {
+            QByteArray err = m_backendProcess->readAllStandardError();
+            for (const QByteArray &linha : err.split('\n')) {
+                if (!linha.trimmed().isEmpty()) {
+                    appendLog(QString::fromUtf8(linha).trimmed(), "warning");
+                }
+            }
+        });
+        
+        // Alerta caso o processo do backend morra ou falhe
+        connect(m_backendProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
+            if (!m_isFechando) {
+                QString msg = QString("O motor de IA encerrou inesperadamente (Código: %1, Status: %2).")
+                                .arg(exitCode).arg(exitStatus == QProcess::CrashExit ? "Crash" : "Normal");
+                appendLog(msg, "error");
+                
+                QMessageBox msgBox(this);
+                msgBox.setWindowTitle("Erro no Motor de IA");
+                msgBox.setText("<b>O Vellum perdeu a conexão com o motor de Inteligência Artificial.</b>");
+                msgBox.setInformativeText("Isolamos os logs do backend em <i>vellum.log</i> para análise.\n\nO aplicativo tentará reiniciá-lo automaticamente.");
+                msgBox.setIcon(QMessageBox::Critical);
+                msgBox.exec();
+                
+                // Reinicia em 3s
+                QTimer::singleShot(3000, this, &MainWindow::verificarEIniciarBackend);
+            }
+        });
+        
+        connect(m_backendProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+            if (!m_isFechando) {
+                appendLog(QString("Erro no processo do motor de IA: %1").arg(error), "error");
+            }
+        });
     }
 
     m_backendProcess->setWorkingDirectory(workingDir);
     appendLog(QString("Iniciando motor de IA na porta %1...").arg(m_backendPort), "info");
     args << "--port" << QString::number(m_backendPort)
          << "--ppid" << QString::number(QCoreApplication::applicationPid());
+    
+    // Configurar o QProcess para interceptar stdout e stderr antes de iniciar
+    m_backendProcess->setProcessChannelMode(QProcess::SeparateChannels);
+    
     m_backendProcess->start(execPath, args);
 
     // Tenta pingar a conexão gradualmente

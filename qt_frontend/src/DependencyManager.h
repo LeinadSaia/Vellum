@@ -27,7 +27,7 @@ private slots:
 
 private:
     void downloadNext();
-    void installTesseractWindows();
+    void installExternalDependencies();
 
     QWidget *m_parentWidget;
     QNetworkAccessManager m_net;

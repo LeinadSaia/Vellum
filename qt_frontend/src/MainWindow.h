@@ -126,6 +126,8 @@ private slots:
     void onErroRequisicao(const QString &endpoint, const QString &mensagem);
     void onGravacaoIniciada();
 
+    void puxarModeloOllama(const QString &modelo);
+
     // ── Configurações e Desempenho ────────────────────────────────────────
     void onPerfilAlterado(int index);
 
@@ -179,6 +181,7 @@ private:
     ModoCapturaRubberBand m_tipoCaptura = ModoCapturaRubberBand::Nenhum;
 
     bool             m_modoCaptura        = false;
+    bool             m_isFechando         = false;
     bool             m_gravando           = false;
     bool             m_panAtivo           = false;
     bool             m_bloquearSyncPagina = false;
@@ -331,5 +334,7 @@ private:
     void atualizarVisibilidadeEmptyState();
     void verificarEIniciarBackend();
     void pararBackend();
+    
+    QProcess        *m_processoOllamaPull   = nullptr;
 };
 

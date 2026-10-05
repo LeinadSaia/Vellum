@@ -92,7 +92,7 @@ O projeto adota uma arquitetura desacoplada em duas camadas:
 #### Opção A: Instalador Automatizado (Recomendado)
 Para integrar o Vellum diretamente no menu do seu sistema operacional (`.desktop`), registrar o ícone e associar arquivos PDF:
 ```bash
-git clone https://github.com/thnsm/App-de-tradu-o-e-leitura.git Vellum
+git clone https://github.com/thnsm/Vellum.git Vellum
 cd Vellum
 ./install_linux.sh
 ```
@@ -118,13 +118,13 @@ O script remove o executável, atalhos, ícones e oferece a opção de remover a
 ### No Windows 10 / 11
 
 #### Opção A: Versão Portátil ZIP (Recomendada — Baixe, extraia e use)
-Baixe o arquivo compactado `Vellum-v1.0.1-Windows-x86_64.zip` disponível na aba [Releases](https://github.com/thnsm/App-de-tradu-o-e-leitura/releases):
+Baixe o arquivo compactado `Vellum-v1.0.1-Windows-x86_64.zip` disponível na aba [Releases](https://github.com/thnsm/Vellum/releases):
 1. Extraia o arquivo `.zip` para qualquer pasta de sua preferência (ex: em `Documentos` ou `Área de Trabalho`).
 2. Abra a pasta extraída e dê dois cliques em `Vellum.exe`.
 3. Essa versão não requer direitos de administrador, não instala nada no sistema operacional e não sofre bloqueios de políticas restritivas do Smart App Control do Windows 11.
 
 #### Opção B: Instalador Clássico (`Vellum-Setup-Windows-v1.0.1.exe`)
-Baixe a versão executável disponível na aba [Releases](https://github.com/thnsm/App-de-tradu-o-e-leitura/releases) do repositório e execute o instalador. Ele configurará:
+Baixe a versão executável disponível na aba [Releases](https://github.com/thnsm/Vellum/releases) do repositório e execute o instalador. Ele configurará:
 - Atalhos na Área de Trabalho e no Menu Iniciar.
 - Opção de associar o Vellum para abrir arquivos `.pdf` com dois cliques.
 - Backend em segundo plano 100% invisível (sem janelas pretas de console).

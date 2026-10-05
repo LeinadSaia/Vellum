@@ -2782,6 +2782,7 @@ void MainWindow::onServidorOnline(bool online)
     if (online) {
         if (m_lblStatusGeral) m_lblStatusGeral->setText("Motor de IA ativo");
         m_lblStatus->setText("Motor de IA ativo");
+        emit backendPronto();
         m_net->verificarModelosStatus();
     } else {
         if (m_lblStatusGeral) m_lblStatusGeral->setText("Iniciando motor de IA em segundo plano...");
@@ -3543,6 +3544,12 @@ void MainWindow::verificarEIniciarBackend()
             if (QFile::exists(base + "/bin/" + binName)) {
                 execPath = base + "/bin/" + binName;
                 workingDir = base;
+                achouBin = true;
+                break;
+            }
+            if (QFile::exists(base + "/backend/" + binName)) {
+                execPath = base + "/backend/" + binName;
+                workingDir = base + "/backend";
                 achouBin = true;
                 break;
             }

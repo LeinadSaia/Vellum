@@ -21,18 +21,19 @@ echo "==========================================================================
 rm -rf release_linux "${DIST_DIR}/${TAR_NAME}"
 mkdir -p "${RELEASE_DIR}" "${DIST_DIR}"
 
-# 2. Compilação do Frontend C++
-echo "[1/4] Compilando Frontend C++ (Qt6)..."
+# 2. Compilação do Backend Python
+echo "[1/4] Compilando Backend Python (PyInstaller)..."
+pyinstaller --onefile --name vellum_backend main.py
+
+# 3. Compilação do Frontend C++
+echo "[2/4] Compilando Frontend C++ (Qt6)..."
 cmake -B build_linux -S qt_frontend -DCMAKE_BUILD_TYPE=Release
 cmake --build build_linux -j"$(nproc)"
 
-# 3. Cópia dos arquivos para o pacote
-echo "[2/4] Estruturando pacote release..."
+# 4. Cópia dos arquivos para o pacote
+echo "[3/4] Estruturando pacote release..."
 cp "build_linux/Vellum" "${RELEASE_DIR}/Vellum"
-cp "main.py" "${RELEASE_DIR}/main.py"
-cp "requirements.txt" "${RELEASE_DIR}/requirements.txt"
-cp "iniciar_tudo.sh" "${RELEASE_DIR}/iniciar_tudo.sh"
-cp "iniciar_backend.sh" "${RELEASE_DIR}/iniciar_backend.sh"
+cp "dist/vellum_backend" "${RELEASE_DIR}/vellum_backend"
 cp "install_linux.sh" "${RELEASE_DIR}/install_linux.sh"
 cp "uninstall_linux.sh" "${RELEASE_DIR}/uninstall_linux.sh"
 cp "vellum.desktop" "${RELEASE_DIR}/vellum.desktop"
@@ -45,18 +46,17 @@ elif [ -f "LOGO.png" ]; then
 fi
 
 chmod +x "${RELEASE_DIR}/Vellum"
-chmod +x "${RELEASE_DIR}/iniciar_tudo.sh"
-chmod +x "${RELEASE_DIR}/iniciar_backend.sh"
+chmod +x "${RELEASE_DIR}/vellum_backend"
 chmod +x "${RELEASE_DIR}/install_linux.sh"
 chmod +x "${RELEASE_DIR}/uninstall_linux.sh"
 
-# 4. Geração do tar.gz
-echo "[3/4] Compactando pacote ${TAR_NAME}..."
+# 5. Geração do tar.gz
+echo "[4/4] Compactando pacote ${TAR_NAME}..."
 cd release_linux
 tar -czf "../${DIST_DIR}/${TAR_NAME}" vellum
 cd ..
 
-echo "[4/4] Pacote gerado com sucesso!"
+echo "Pacote gerado com sucesso!"
 ls -lh "${DIST_DIR}/${TAR_NAME}"
 
 echo ""

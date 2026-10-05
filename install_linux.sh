@@ -52,10 +52,16 @@ echo "[3/5] Copiando arquivos do aplicativo..."
 mkdir -p "${BIN_DIR}" "${OPT_DIR}" "${APP_DIR}" "${ICON_DIR}"
 
 # Copia arquivos essenciais para ~/.local/share/vellum
-cp "build_linux/Vellum" "${OPT_DIR}/Vellum"
-cp "main.py" "${OPT_DIR}/main.py"
-cp "requirements.txt" "${OPT_DIR}/requirements.txt"
-cp -r "venv" "${OPT_DIR}/"
+cp "build_linux/Vellum" "${OPT_DIR}/Vellum" 2>/dev/null || cp "Vellum" "${OPT_DIR}/Vellum"
+if [ -f "vellum_backend" ]; then
+    cp "vellum_backend" "${OPT_DIR}/vellum_backend"
+elif [ -f "dist/vellum_backend" ]; then
+    cp "dist/vellum_backend" "${OPT_DIR}/vellum_backend"
+else
+    cp "main.py" "${OPT_DIR}/main.py"
+    cp "requirements.txt" "${OPT_DIR}/requirements.txt"
+    cp -r "venv" "${OPT_DIR}/" 2>/dev/null || true
+fi
 
 # Copia ícone oficial
 if [ -f "qt_frontend/resources/app_icon.png" ]; then
@@ -69,22 +75,6 @@ cat << 'EOF' > "${BIN_DIR}/vellum"
 #!/usr/bin/env bash
 BASE_DIR="${HOME}/.local/share/vellum"
 cd "${BASE_DIR}"
-
-# Inicia backend em segundo plano se não estiver rodando
-if ! curl -s http://127.0.0.1:8000/docs >/dev/null 2>&1; then
-    "${BASE_DIR}/venv/bin/python3" -m uvicorn main:app --host 127.0.0.1 --port 8000 >/dev/null 2>&1 &
-    BACKEND_PID=$!
-    cleanup() {
-        kill $BACKEND_PID 2>/dev/null || true
-    }
-    trap cleanup EXIT INT TERM
-    for i in {1..20}; do
-        if curl -s http://127.0.0.1:8000/docs >/dev/null 2>&1; then
-            break
-        fi
-        sleep 0.15
-    done
-fi
 
 export QT_QPA_PLATFORM="wayland;xcb"
 exec "${BASE_DIR}/Vellum" "$@"

@@ -59,29 +59,35 @@ O aplicativo base (Frontend C++ compilado + Backend Python) ocupa apenas **~45 M
 
 ---
 
-## Arquitetura do Sistema
+## Arquitetura Premium (Sistema Desacoplado)
 
-O projeto adota uma arquitetura desacoplada em duas camadas:
+O projeto adota uma arquitetura avançada em duas camadas, focada em estabilidade, economia de memória RAM (Watchdog) e experiência *Plug & Play*:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    FRONTEND (C++17 / Qt6)                   │
-│  - Renderização de PDF via QPdf / QPdfPageNavigator         │
-│  - Captura RubberBand para OCR em Wayland / X11 / Windows   │
-│  - Renderizador rico de Markdown, LaTeX e Tabelas           │
-│  - Bloco de notas formatado & gerenciador de atalhos        │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ Requisições REST Assíncronas
-                               ▼ (porta dinâmica automática)
-┌─────────────────────────────────────────────────────────────┐
-│                 BACKEND (Python / FastAPI)                  │
-│  - Lazy Loading do Whisper (boot ultra rápido em ~1.5s)     │
-│  - Extração OCR via Tesseract (com detecção local/sistema)  │
-│  - Motor Gemini API com pool de conexões persistentes HTTP  │
-│  - Integração com Ollama Local                              │
-│  - Síntese Neural Edge-TTS + Áudio via SoundDevice          │
-└─────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│                    FRONTEND (C++17 / Qt6)                     │
+│  - Renderização de PDF via QPdf / QPdfPageNavigator           │
+│  - Orquestrador Mestre: Controla ciclo de vida do Backend     │
+│  - Gerenciador Nativo de Dependências (Download integrado UI) │
+│  - Captura RubberBand para OCR em Wayland / X11 / Windows     │
+│  - Renderizador rico de Markdown, LaTeX e Tabelas             │
+└───────────────────────────────┬───────────────────────────────┘
+                                │ Porta Dinâmica Sorteada
+                                ▼ (Comunicação REST Segura)
+┌───────────────────────────────────────────────────────────────┐
+│                  BACKEND (Python / FastAPI)                   │
+│  - Watchdog System: Auto-suicídio se o Frontend fechar        │
+│  - Lazy Loading Híbrido: Modelos são descarregados se ociosos │
+│  - Extração OCR via Tesseract OCR                             │
+│  - Motor Gemini API com pool de conexões HTTP                 │
+│  - Integração Local Automática via API do Ollama              │
+│  - Síntese Neural Edge-TTS + Áudio via SoundDevice            │
+└───────────────────────────────────────────────────────────────┘
 ```
+**Destaques da Arquitetura Premium:**
+- **Zero Telas Pretas:** Downloads de modelos (Whisper, Tesseract, Ollama) são feitos e monitorados nativamente por uma barra de progresso no Frontend C++.
+- **Logs Resilientes:** Erros e saídas do motor Python são interceptados via `QProcess` e salvos de forma rotativa no arquivo oculto `vellum.log`.
+- **Instalação Silenciosa do Ollama:** O próprio aplicativo aciona o Ollama em background para fazer o `pull` dos modelos locais (`llama3.2`, `phi3`) quando o usuário os seleciona pela primeira vez.
 
 ---
 
@@ -90,9 +96,9 @@ O projeto adota uma arquitetura desacoplada em duas camadas:
 ### No Linux (Ubuntu, Debian, Fedora, Arch, etc.)
 
 #### Opção A: Instalador Automatizado (Recomendado)
-Para integrar o Vellum diretamente no menu do seu sistema operacional (`.desktop`), registrar o ícone e associar arquivos PDF:
+Para compilar o Frontend, baixar as dependências e integrar o Vellum diretamente no menu do seu sistema operacional (`.desktop`), rode:
 ```bash
-git clone https://github.com/thnsm/Vellum.git Vellum
+git clone https://github.com/LeinadSaia/Vellum.git Vellum
 cd Vellum
 ./install_linux.sh
 ```
@@ -100,7 +106,7 @@ Após isso, basta abrir o **Vellum** pelo lançador de aplicativos do sistema ou
 ```bash
 vellum livro.pdf
 ```
-
+*Na sua primeira execução, a interface gráfica se encarregará de baixar e configurar as dependências (OCR, Modelos Whisper) sem que você precise abrir terminais.*
 
 #### Como Desinstalar no Linux
 Diferente de outros aplicativos, o Vellum preza por deixar o seu sistema limpo. Para desinstalar completamente:
@@ -114,26 +120,24 @@ O script remove o executável, atalhos, ícones e oferece a opção de remover a
 ### No Windows 10 / 11
 
 #### Opção A: Versão Portátil ZIP (Recomendada — Baixe, extraia e use)
-Baixe o arquivo compactado `Vellum-v1.0.1-Windows-x86_64.zip` disponível na aba [Releases](https://github.com/thnsm/Vellum/releases):
+Baixe o arquivo compactado `Vellum-v1.0.1-Windows-x86_64.zip` disponível na aba [Releases](https://github.com/LeinadSaia/Vellum/releases):
 1. Extraia o arquivo `.zip` para qualquer pasta de sua preferência (ex: em `Documentos` ou `Área de Trabalho`).
 2. Abra a pasta extraída e dê dois cliques em `Vellum.exe`.
-3. Essa versão não requer direitos de administrador, não instala nada no sistema operacional e não sofre bloqueios de políticas restritivas do Smart App Control do Windows 11.
+3. Essa versão não requer direitos de administrador, não instala nada no sistema operacional e gerencia o download de modelos diretamente na interface.
 
 #### Opção B: Instalador Clássico (`Vellum-Setup-Windows-v1.0.1.exe`)
-Baixe a versão executável disponível na aba [Releases](https://github.com/thnsm/Vellum/releases) do repositório e execute o instalador. Ele configurará:
+Baixe a versão executável disponível na aba [Releases](https://github.com/LeinadSaia/Vellum/releases) do repositório e execute o instalador. Ele configurará:
 - Atalhos na Área de Trabalho e no Menu Iniciar.
-- Opção de associar o Vellum para abrir arquivos `.pdf` com dois cliques.
-- Backend em segundo plano 100% invisível (sem janelas pretas de console).
-- Suporte a seleção modular de modelos durante a instalação (lembre-se: para selecionar modelos de IA Ollama, é necessário ter o Ollama instalado no computador).
+- Associação do Vellum como leitor padrão para arquivos `.pdf`.
+- Backend em segundo plano 100% invisível gerenciado nativamente pelo C++.
 
-> **Aviso sobre o Windows SmartScreen**: Como o Vellum é um projeto de código aberto recém-compilado e distribuído de forma independente (sem certificado comercial de assinatura de código pago), o Windows pode exibir a tela azul "O Windows protegeu o seu computador". Trata-se de um comportamento padrão do sistema para novos binários sem reputação acumulada. Para prosseguir normalmente, clique em **"Mais informações"** e depois no botão **"Executar assim mesmo"**.
-
+> **Aviso sobre o Windows SmartScreen**: Como o Vellum é um projeto de código aberto sem certificado comercial de assinatura de código pago, o Windows pode exibir a tela azul "O Windows protegeu o seu computador". Clique em **"Mais informações"** e depois no botão **"Executar assim mesmo"**.
 
 #### Como Desinstalar no Windows
 O Vellum cria um desinstalador dedicado e transparente:
 - Acesse o Menu Iniciar > pasta **Vellum** > clique em **Desinstalar Vellum**.
 - Ou abra `Configurações do Windows > Aplicativos > Aplicativos Instalados > Vellum > Desinstalar`.
-- O desinstalador encerra processos em execução, remove toda a pasta da aplicação e pergunta se deseja limpar dados residuais do registro para uma limpeza de 100%.
+- O desinstalador encerra processos (watchdog cuidará do backend) e permite limpar os dados residuais do registro para uma limpeza 100%.
 
 ---
 

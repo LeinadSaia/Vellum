@@ -407,7 +407,16 @@ def _tocar_audio_arquivo(caminho_mp3: str):
                 sample_rate=44100
             )
             samples = np.frombuffer(decoded.samples, dtype=np.float32)
-            sd.play(samples, samplerate=44100)
+            
+            # Garantir saída de som no PulseAudio no Linux (evita cair no ALSA Mudo)
+            device_name = None
+            if os.name == 'posix':
+                for d in sd.query_devices():
+                    if 'pulse' in d['name'].lower() and d['max_output_channels'] > 0:
+                        device_name = d['name']
+                        break
+                        
+            sd.play(samples, samplerate=44100, device=device_name)
             sd.wait()
         except Exception as e:
             log.error(f"[TTS Playback] Erro na reprodução: {e}")

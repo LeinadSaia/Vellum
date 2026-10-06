@@ -400,11 +400,14 @@ def _tocar_audio_arquivo(caminho_mp3: str):
     with _playback_lock:
         try:
             sd.stop()
-            decoded = miniaudio.mp3_read_file_f32(caminho_mp3)
+            decoded = miniaudio.decode_file(
+                caminho_mp3,
+                output_format=miniaudio.SampleFormat.FLOAT32,
+                nchannels=1,
+                sample_rate=44100
+            )
             samples = np.frombuffer(decoded.samples, dtype=np.float32)
-            if decoded.nchannels > 1:
-                samples = samples.reshape(-1, decoded.nchannels)
-            sd.play(samples, samplerate=decoded.sample_rate)
+            sd.play(samples, samplerate=44100, channels=1)
             sd.wait()
         except Exception as e:
             log.error(f"[TTS Playback] Erro na reprodução: {e}")

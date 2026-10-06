@@ -46,7 +46,7 @@ void DependencyManager::startDownload()
 
     if (!QFile::exists(whisperDir + "/tiny.en.pt")) {
         m_queue.append({
-            "https://openaipublic.azureedge.net/main/whisper/models/d3dd57d32accea0b295c96e26691aa14d8822fac7d9d27d5dc00ba0adc22e8dd/tiny.en.pt",
+            "https://openaipublic.azureedge.net/main/whisper/models/d3dd57d32accea0b295c96e26691aa14d8822fac7d9d27d5dc00b4ca2826dd03/tiny.en.pt",
             whisperDir + "/tiny.en.pt",
             "Modelo Whisper (tiny.en)"
         });

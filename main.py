@@ -407,7 +407,7 @@ def _tocar_audio_arquivo(caminho_mp3: str):
                 sample_rate=44100
             )
             samples = np.frombuffer(decoded.samples, dtype=np.float32)
-            sd.play(samples, samplerate=44100, channels=1)
+            sd.play(samples, samplerate=44100)
             sd.wait()
         except Exception as e:
             log.error(f"[TTS Playback] Erro na reprodução: {e}")

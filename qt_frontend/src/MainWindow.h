@@ -265,6 +265,7 @@ private:
     QPushButton     *m_btnGravar         = nullptr;
     QProgressBar    *m_barAcuracia       = nullptr;
     QLabel          *m_lblAcuracia       = nullptr;
+    QTextEdit       *m_txtTextoTutor     = nullptr;
     QTextEdit       *m_txtFeedbackTutor  = nullptr;
 
     // ── Aba 3: Assistente IA & Chat ──────────────────────────────────────

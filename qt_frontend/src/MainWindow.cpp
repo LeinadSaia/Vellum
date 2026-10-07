@@ -485,6 +485,15 @@ QWidget* MainWindow::criarAbaTutor()
     m_comboNivelTutor->setCurrentIndex(1);
     layout->addWidget(m_comboNivelTutor);
 
+    auto *lblTextoPratica = new QLabel("Texto para Prática:", aba);
+    lblTextoPratica->setObjectName("lblSecao");
+    layout->addWidget(lblTextoPratica);
+
+    m_txtTextoTutor = new QTextEdit(aba);
+    m_txtTextoTutor->setObjectName("txtTextoTutor");
+    m_txtTextoTutor->setPlaceholderText("O texto selecionado no PDF aparecerá aqui. Você também pode digitar ou colar o texto em inglês que deseja praticar.");
+    layout->addWidget(m_txtTextoTutor, 1);
+
     auto *layoutBotoes = new QHBoxLayout();
     layoutBotoes->setSpacing(6);
 
@@ -515,6 +524,10 @@ QWidget* MainWindow::criarAbaTutor()
     m_barAcuracia->setTextVisible(true);
     m_barAcuracia->setFormat("%p%");
     layout->addWidget(m_barAcuracia);
+
+    auto *lblFeedback = new QLabel("Feedback:", aba);
+    lblFeedback->setObjectName("lblSecao");
+    layout->addWidget(lblFeedback);
 
     m_txtFeedbackTutor = new QTextEdit(aba);
     m_txtFeedbackTutor->setObjectName("txtFeedback");
@@ -1865,6 +1878,10 @@ void MainWindow::onTraducaoDiretaResultado(const QString &textoIngles, const QSt
 {
     m_textoOriginalEn = textoIngles;
     m_textoTraduzidoPt = traducaoPortugues;
+    
+    if (m_txtTextoTutor) {
+        m_txtTextoTutor->setPlainText(textoIngles);
+    }
 
     m_btnOuvir->setEnabled(!textoIngles.isEmpty());
     m_btnGravar->setEnabled(!textoIngles.isEmpty());
@@ -1913,9 +1930,17 @@ void MainWindow::onCopiarTraducao()
 
 void MainWindow::onOuvirPronuncia()
 {
-    const QString texto = m_textoOriginalEn.isEmpty()
-        ? QApplication::clipboard()->text().trimmed()
-        : m_textoOriginalEn;
+    QString texto;
+    if (m_txtTextoTutor) {
+        texto = m_txtTextoTutor->textCursor().selectedText();
+        if (texto.isEmpty()) {
+            texto = m_txtTextoTutor->toPlainText().trimmed();
+        }
+    } else {
+        texto = m_textoOriginalEn.isEmpty()
+            ? QApplication::clipboard()->text().trimmed()
+            : m_textoOriginalEn;
+    }
 
     if (texto.isEmpty()) {
         appendLog("Selecione um texto antes para ouvir a pronúncia.", "warning");
@@ -1942,14 +1967,28 @@ void MainWindow::onFalaIniciada(const QString &voz)
 void MainWindow::onGravarVozTutor()
 {
     if (!m_gravando) {
-        if (m_textoOriginalEn.isEmpty()) {
-            m_textoOriginalEn = QApplication::clipboard()->text().trimmed();
+        QString textoParaLer;
+        if (m_txtTextoTutor) {
+            textoParaLer = m_txtTextoTutor->textCursor().selectedText();
+            if (textoParaLer.isEmpty()) {
+                textoParaLer = m_txtTextoTutor->toPlainText().trimmed();
+            }
+        }
+        
+        if (textoParaLer.isEmpty()) {
+            textoParaLer = m_textoOriginalEn;
         }
 
-        if (m_textoOriginalEn.isEmpty()) {
-            appendLog("Selecione um parágrafo para praticar a leitura.", "warning");
+        if (textoParaLer.isEmpty()) {
+            textoParaLer = QApplication::clipboard()->text().trimmed();
+        }
+
+        if (textoParaLer.isEmpty()) {
+            appendLog("Selecione ou digite um parágrafo para praticar a leitura.", "warning");
             return;
         }
+        
+        m_textoOriginalEn = textoParaLer; // Salva o texto que será usado para a avaliação
 
         m_gravando = true;
         m_btnGravar->setText("Parar e Avaliar");
@@ -2971,6 +3010,9 @@ void MainWindow::onErroRequisicao(const QString &endpoint, const QString &mensag
 void MainWindow::onLimparOcrResultado(const QString &texto)
 {
     m_textoOriginalEn = texto;
+    if (m_txtTextoTutor) {
+        m_txtTextoTutor->setPlainText(texto);
+    }
     m_btnOuvir->setEnabled(true);
     m_btnGravar->setEnabled(true);
     appendLog("Texto extraído com sucesso.");

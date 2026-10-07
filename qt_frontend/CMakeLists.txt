@@ -22,6 +22,8 @@ set(SOURCES
     src/MainWindow.cpp
     src/NetworkManager.cpp
     src/DependencyManager.cpp
+    src/ThemeManager.cpp
+    src/PromptInputWidget.cpp
     resources.qrc
 )
 
@@ -33,6 +35,8 @@ set(HEADERS
     src/MainWindow.h
     src/NetworkManager.h
     src/DependencyManager.h
+    src/ThemeManager.h
+    src/PromptInputWidget.h
 )
 
 qt_add_executable(Vellum
@@ -70,3 +74,35 @@ if(WIN32)
         COMMENT "Copiando dependências Qt (windeployqt)..."
     )
 endif()
+
+# Ativa testes
+enable_testing()
+find_package(Qt6 REQUIRED COMPONENTS Test)
+
+add_executable(tst_ThemeManager
+    tests/tst_ThemeManager.cpp
+    src/ThemeManager.cpp
+    src/ThemeManager.h
+    resources.qrc
+)
+
+target_link_libraries(tst_ThemeManager PRIVATE
+    Qt6::Core
+    Qt6::Widgets
+    Qt6::Test
+)
+
+add_executable(tst_PromptInputWidget
+    tests/tst_PromptInputWidget.cpp
+    src/PromptInputWidget.cpp
+    src/PromptInputWidget.h
+)
+
+target_link_libraries(tst_PromptInputWidget PRIVATE
+    Qt6::Core
+    Qt6::Widgets
+    Qt6::Test
+)
+
+add_test(NAME tst_ThemeManager COMMAND tst_ThemeManager)
+add_test(NAME tst_PromptInputWidget COMMAND tst_PromptInputWidget)

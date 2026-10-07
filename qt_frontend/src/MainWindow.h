@@ -34,6 +34,8 @@
 #include <QMimeData>
 
 class NetworkManager;
+class PromptInputWidget;
+class ThemeManager;
 
 enum class ModoVisualizacao {
     UmaPagina,     // 1 página por vez
@@ -254,7 +256,7 @@ private:
     QPushButton     *m_btnTraduzir       = nullptr;
     QPushButton     *m_btnCopiarTraducao = nullptr;
     QCheckBox       *m_chkTraducaoAuto   = nullptr;
-    QTextEdit       *m_txtTraducao       = nullptr;
+    PromptInputWidget *m_promptTraducao  = nullptr;
 
     // ── Aba 2: Tutor & Pronúncia ──────────────────────────────────────────
     QComboBox       *m_comboVoz          = nullptr;
@@ -265,20 +267,13 @@ private:
     QPushButton     *m_btnGravar         = nullptr;
     QProgressBar    *m_barAcuracia       = nullptr;
     QLabel          *m_lblAcuracia       = nullptr;
-    QTextEdit       *m_txtTextoTutor     = nullptr;
+    PromptInputWidget *m_promptTextoTutor = nullptr;
     QTextEdit       *m_txtFeedbackTutor  = nullptr;
 
     // ── Aba 3: Assistente IA & Chat ──────────────────────────────────────
     QTextBrowser    *m_chatHistorico     = nullptr;
-    QTextEdit       *m_chatInput         = nullptr;
-    QPushButton     *m_btnChatEnviar     = nullptr;
-    QPushButton     *m_btnCapturarCircuito = nullptr;
-    QPushButton     *m_btnAnexarImagem   = nullptr;
-    QPushButton     *m_btnColarTrecho    = nullptr;
-    QWidget         *m_chatPreviewWidget = nullptr;
-    QLabel          *m_chatThumbLabel    = nullptr;
-    QLabel          *m_chatThumbTexto    = nullptr;
-    QPushButton     *m_btnRemoverThumb   = nullptr;
+    PromptInputWidget *m_promptInput     = nullptr;
+    ThemeManager      *m_themeManager    = nullptr;
     QLabel          *m_lblModeloAtivoChat= nullptr;
     QPushButton     *m_btnConfigurarIA   = nullptr;
     QPushButton     *m_btnLimparChat     = nullptr;
@@ -304,6 +299,7 @@ private:
 
     // ── Aba 5: Desempenho & Layout ────────────────────────────────────────
     QComboBox       *m_comboPerfil       = nullptr;
+    QComboBox       *m_comboTema         = nullptr;
     QPushButton     *m_btnSalvarLayout   = nullptr;
     QPushButton     *m_btnRestaurarLayout= nullptr;
     QPushButton     *m_btnProporcao100   = nullptr;

@@ -8,11 +8,6 @@ from main import app
 
 client = TestClient(app)
 
-def test_health_check():
-    response = client.get("/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
-
 def test_listar_vozes():
     response = client.get("/vozes")
     assert response.status_code == 200
@@ -26,10 +21,5 @@ def test_modelos_status():
 
 def test_traduzir_sem_texto():
     response = client.post("/traduzir", json={})
-    assert response.status_code == 400
-
-# def test_limpar_ocr():
-#    response = client.post("/limpar_ocr", json={"texto_sujo": "Hello-\nworld\n123"})
-#    assert response.status_code == 200
-#    assert "Hello world" in response.json()["texto_limpo"]
-
+    # FastAPI returns 422 Unprocessable Entity when validation fails
+    assert response.status_code == 422

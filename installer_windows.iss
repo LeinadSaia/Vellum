@@ -69,9 +69,9 @@ Name: "custom";      Description: "Instalação Personalizada"
 
 [Components]
 Name: "core";          Description: "Núcleo do Vellum, Leitor de PDF e Backend (Obrigatório)"; Types: recommended full custom; Flags: fixed
-Name: "ia_phi3";       Description: "Modelo Local phi3:mini (~2.2 GB) [Opcional - Requer Ollama no PC]"; Types: full custom; Flags: unchecked
-Name: "ia_llama32";    Description: "Modelo Local llama3.2:3b (~2.0 GB) [Opcional - Requer Ollama no PC]"; Types: full custom; Flags: unchecked
-Name: "ia_llama3";     Description: "Modelo Local llama3:8b (~4.7 GB) [Opcional - Requer Ollama no PC]"; Types: full custom; Flags: unchecked
+Name: "ia_phi3";       Description: "Modelo Local phi3:mini (~2.2 GB) [Opcional - Requer Ollama no PC]"; Types: full
+Name: "ia_llama32";    Description: "Modelo Local llama3.2:3b (~2.0 GB) [Opcional - Requer Ollama no PC]"; Types: full
+Name: "ia_llama3";     Description: "Modelo Local llama3:8b (~4.7 GB) [Opcional - Requer Ollama no PC]"; Types: full
 
 [Tasks]
 Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDescription: "Atalhos Adicionais:"

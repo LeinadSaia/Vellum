@@ -64,13 +64,13 @@ goto fim
 :dl_wtiny
 echo.
 echo [WHISPER] Baixando modelo tiny.en para reconhecimento de voz...
-powershell -Command "New-Item -ItemType Directory -Force -Path \"$env:USERPROFILE\.cache\whisper\" | Out-Null; if (-not (Test-Path \"$env:USERPROFILE\.cache\whisper\tiny.en.pt\")) { (New-Object System.Net.WebClient).DownloadFile('https://openaipublic.azureedge.net/main/whisper/models/d3dd57d32accea0b295c96e26691aa14d8822fac7d9d27d5dc00ba0adc22e8dd/tiny.en.pt', \"$env:USERPROFILE\.cache\whisper\tiny.en.pt\") }"
+powershell -Command "New-Item -ItemType Directory -Force -Path \"$env:USERPROFILE\.cache\whisper\" | Out-Null; if (-not (Test-Path \"$env:USERPROFILE\.cache\whisper\tiny.en.pt\")) { (New-Object System.Net.WebClient).DownloadFile('https://openaipublic.azureedge.net/main/whisper/models/d3dd57d32accea0b295c96e26691aa14d8822fac7d9d27d5dc00b4ca2826dd03/tiny.en.pt', \"$env:USERPROFILE\.cache\whisper\tiny.en.pt\") }"
 goto fim
 
 :dl_wbase
 echo.
 echo [WHISPER] Baixando modelo base.en para reconhecimento de voz...
-powershell -Command "New-Item -ItemType Directory -Force -Path \"$env:USERPROFILE\.cache\whisper\" | Out-Null; if (-not (Test-Path \"$env:USERPROFILE\.cache\whisper\base.en.pt\")) { (New-Object System.Net.WebClient).DownloadFile('https://openaipublic.azureedge.net/main/whisper/models/256150255c601dbb170ef89248a8458ad4cf37081fa97e5b2eb5de50d1da676e/base.en.pt', \"$env:USERPROFILE\.cache\whisper\base.en.pt\") }"
+powershell -Command "New-Item -ItemType Directory -Force -Path \"$env:USERPROFILE\.cache\whisper\" | Out-Null; if (-not (Test-Path \"$env:USERPROFILE\.cache\whisper\base.en.pt\")) { (New-Object System.Net.WebClient).DownloadFile('https://openaipublic.azureedge.net/main/whisper/models/25a8566e1d0c1e2231d1c762132cd20e0f96a85d16145c3a00adf5d1ac670ead/base.en.pt', \"$env:USERPROFILE\.cache\whisper\base.en.pt\") }"
 goto fim
 
 :fim

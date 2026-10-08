@@ -58,7 +58,7 @@ void DependencyManager::startDownload()
     const bool baseExists = QFile::exists(whisperAppDir + "/base.en.pt") || QFile::exists(whisperUserDir + "/base.en.pt");
     if (!baseExists) {
         m_queue.append({
-            "https://openaipublic.azureedge.net/main/whisper/models/256150255c601dbb170ef89248a8458ad4cf37081fa97e5b2eb5de50d1da676e/base.en.pt",
+            "https://openaipublic.azureedge.net/main/whisper/models/25a8566e1d0c1e2231d1c762132cd20e0f96a85d16145c3a00adf5d1ac670ead/base.en.pt",
             whisperUserDir + "/base.en.pt",
             "Modelo Whisper (base.en)"
         });

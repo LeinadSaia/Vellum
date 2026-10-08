@@ -38,10 +38,18 @@ echo.
 echo [3/5] Coletando dependencias Qt com windeployqt...
 windeployqt --no-translations --compiler-runtime "%RELEASE_DIR%\Vellum.exe"
 copy /y "qt_frontend\resources\app_icon.ico" "%RELEASE_DIR%\app_icon.ico"
+copy /y "download_models.bat" "%RELEASE_DIR%\download_models.bat"
 
+REM Bundle Tesseract se existir no sistema
+if exist "C:\Program Files\Tesseract-OCR" (
+    echo [INFO] Empacotando Tesseract-OCR local...
+    xcopy /E /I /Y "C:\Program Files\Tesseract-OCR" "%RELEASE_DIR%\Tesseract-OCR"
+)
+
+echo.
 echo [4/5] Empacotando Backend Python (FastAPI) com PyInstaller...
 pip install pyinstaller -r requirements.txt
-pyinstaller --clean --noconsole --name vellum_backend --onedir --distpath "temp_dist" main.py
+pyinstaller --clean --noconsole --name vellum_backend --onedir --collect-all whisper --collect-all uvicorn --distpath "temp_dist" main.py
 if exist "temp_dist\vellum_backend" (
     move "temp_dist\vellum_backend" "%RELEASE_DIR%\backend"
     rmdir /s /q "temp_dist"
@@ -72,6 +80,6 @@ echo [SUCESSO] Pacote portatil gerado em %DIST_DIR%\Vellum-v1.0.1-Windows-x86_64
 
 echo.
 echo ==============================================================================
-echo                      Processo finalizado!
+echo                      Processo finalizado com sucesso!
 echo ==============================================================================
 pause

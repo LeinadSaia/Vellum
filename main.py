@@ -69,7 +69,8 @@ if os.name == 'nt':
         os.path.join(base_dir, "bin", "tesseract.exe"),
         os.path.join(exec_dir, "tesseract", "tesseract.exe"),
         os.path.join(exec_dir, "Tesseract-OCR", "tesseract.exe"),
-        os.path.join(exec_dir, "bin", "tesseract.exe"),
+        os.path.join(base_dir, "..", "Tesseract-OCR", "tesseract.exe"),
+        os.path.join(exec_dir, "..", "Tesseract-OCR", "tesseract.exe"),
         r'C:\Program Files\Tesseract-OCR\tesseract.exe',
         r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
         os.path.expandvars(r'%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe'),
@@ -199,8 +200,19 @@ def _obter_modelo_whisper(nome_modelo: Optional[str] = None):
             return _modelo_whisper
 
         log.info(f"[Whisper] Carregando modelo '{nome_alvo}' sob demanda...")
+        download_root = None
+        for cand in [
+            os.path.join(base_dir, "..", "models", "whisper"),
+            os.path.join(exec_dir, "..", "models", "whisper"),
+            os.path.join(base_dir, "models", "whisper"),
+            os.path.join(exec_dir, "models", "whisper")
+        ]:
+            if os.path.isdir(cand) and (os.path.exists(os.path.join(cand, f"{nome_alvo}.pt")) or os.path.exists(os.path.join(cand, "tiny.en.pt"))):
+                download_root = os.path.abspath(cand)
+                break
+
         try:
-            _modelo_whisper = whisper.load_model(nome_alvo)
+            _modelo_whisper = whisper.load_model(nome_alvo, download_root=download_root)
             _whisper_carregado_nome = nome_alvo
             log.info(f"[Whisper] Modelo '{nome_alvo}' carregado com sucesso.")
             return _modelo_whisper
@@ -210,7 +222,7 @@ def _obter_modelo_whisper(nome_modelo: Optional[str] = None):
                 if fallback == nome_alvo:
                     continue
                 try:
-                    _modelo_whisper = whisper.load_model(fallback)
+                    _modelo_whisper = whisper.load_model(fallback, download_root=download_root)
                     _whisper_carregado_nome = fallback
                     log.info(f"[Whisper] Modelo fallback '{fallback}' carregado.")
                     return _modelo_whisper

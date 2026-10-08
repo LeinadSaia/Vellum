@@ -47,13 +47,13 @@ jobs:
           cmake -B build_windows -S qt_frontend -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="%Qt6_DIR%"
           cmake --build build_windows --config Release --parallel
 
-      - name: Setup Inno Setup
+      - name: Setup Tools (Inno Setup & Tesseract)
         shell: pwsh
         run: |
-          choco install innosetup --no-progress
+          choco install innosetup tesseract --no-progress
           echo "C:\Program Files (x86)\Inno Setup 6" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Copy Frontend and Deploy Qt
+      - name: Copy Frontend, Bundle Resources and Deploy Qt
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release_windows
@@ -68,6 +68,22 @@ jobs:
           Copy-Item -Force "qt_frontend\resources\app_icon.ico" "release_windows\app_icon.ico"
           Copy-Item -Force "download_models.bat" "release_windows\download_models.bat"
 
+          # 1. Empacotar Tesseract-OCR portátil em release_windows
+          if (Test-Path "C:\Program Files\Tesseract-OCR") {
+              Write-Host "Copiando Tesseract-OCR oficial..."
+              Copy-Item -Recurse -Force "C:\Program Files\Tesseract-OCR" "release_windows\Tesseract-OCR"
+              # Idioma Portugues para OCR duplo (Ingles + Portugues)
+              New-Item -ItemType Directory -Force -Path "release_windows\Tesseract-OCR\tessdata"
+              Invoke-WebRequest -Uri "https://github.com/tesseract-ocr/tessdata_fast/raw/main/por.traineddata" -OutFile "release_windows\Tesseract-OCR\tessdata\por.traineddata"
+          }
+
+          # 2. Empacotar Modelos Whisper (tiny e base) para funcionamento offline imediato
+          Write-Host "Baixando modelos Whisper para o pacote..."
+          New-Item -ItemType Directory -Force -Path "release_windows\models\whisper"
+          Invoke-WebRequest -Uri "https://openaipublic.azureedge.net/main/whisper/models/d3dd57d32accea0b295c96e26691aa14d8822fac7d9d27d5dc00ba0adc22e8dd/tiny.en.pt" -OutFile "release_windows\models\whisper\tiny.en.pt"
+          Invoke-WebRequest -Uri "https://openaipublic.azureedge.net/main/whisper/models/256150255c601dbb170ef89248a8458ad4cf37081fa97e5b2eb5de50d1da676e/base.en.pt" -OutFile "release_windows\models\whisper\base.en.pt"
+
+          # 3. Coletar DLLs do Qt com windeployqt
           $windeployqt = (Get-Command windeployqt.exe -ErrorAction SilentlyContinue).Source
           if (-not $windeployqt -and $env:Qt6_DIR) {
               $candidate = Join-Path (Split-Path (Split-Path (Split-Path $env:Qt6_DIR))) "bin\windeployqt.exe"
@@ -111,8 +127,6 @@ jobs:
       - name: Create Portable Zip Package
         shell: pwsh
         run: |
-          Copy-Item "download_models.bat" "release_windows\" -Force
-          Copy-Item "install_tesseract.ps1" "release_windows\" -Force
           New-Item -ItemType Directory -Force -Path "temp_portable\Vellum"
           Copy-Item -Recurse -Force "release_windows\*" "temp_portable\Vellum\"
           Compress-Archive -Path "temp_portable\Vellum" -DestinationPath "dist_installer\Vellum-v1.0.1-Windows-x86_64.zip" -CompressionLevel Optimal

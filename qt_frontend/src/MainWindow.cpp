@@ -2589,7 +2589,7 @@ void MainWindow::puxarModeloOllama(const QString &modelo)
     
 #ifdef Q_OS_WIN
     QString ollamaPath = "ollama.exe";
-    QString localAppPath = QStandardPaths::writableLocation(QStandardPaths::LocalAppDataLocation) + "/Programs/Ollama/ollama.exe";
+    QString localAppPath = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/Programs/Ollama/ollama.exe";
     if (QFile::exists(localAppPath)) {
         ollamaPath = localAppPath;
     }

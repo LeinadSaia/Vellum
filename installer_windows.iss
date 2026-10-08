@@ -1,12 +1,12 @@
 ; ==============================================================================
 ;   Vellum - Script Inno Setup para Instalador Windows (.exe)
-;   Gera o instalador modular Vellum-Setup-Windows-v1.0.0.exe
+;   Gera o instalador modular Vellum-Setup-Windows-v1.0.1.exe
 ; ==============================================================================
 
 #define MyAppName "Vellum"
 #define MyAppVersion "1.0.1"
 #define MyAppPublisher "Vellum Team"
-#define MyAppURL "https://github.com/thnsm/Vellum"
+#define MyAppURL "https://github.com/LeinadSaia/Vellum"
 #define MyAppExeName "Vellum.exe"
 
 [Setup]
@@ -63,11 +63,15 @@ AdditionalIcons=Atalhos Adicionais:
 LaunchProgram=Iniciar o %1
 
 [Types]
-Name: "recommended"; Description: "Instalação Padrão Recomendada (Apenas o Vellum)"
-Name: "custom";      Description: "Instalação Personalizada"; Flags: iscustom
+Name: "recommended"; Description: "Instalação Padrão Recomendada (Mais rápida e pronta para uso)"; Flags: iscustom
+Name: "full";        Description: "Instalação Completa (Permite selecionar Modelos Locais Ollama)"
+Name: "custom";      Description: "Instalação Personalizada"
 
 [Components]
-Name: "core";          Description: "Núcleo do Vellum e Backend (Obrigatório)"; Types: recommended custom; Flags: fixed
+Name: "core";          Description: "Núcleo do Vellum, Leitor de PDF e Backend (Obrigatório)"; Types: recommended full custom; Flags: fixed
+Name: "ia_phi3";       Description: "Modelo Local phi3:mini (~2.2 GB) [Opcional - Requer Ollama no PC]"; Types: full
+Name: "ia_llama32";    Description: "Modelo Local llama3.2:3b (~2.0 GB) [Opcional - Requer Ollama no PC]"; Types: full
+Name: "ia_llama3";     Description: "Modelo Local llama3:8b (~4.7 GB) [Opcional - Requer Ollama no PC]"; Types: full
 
 [Tasks]
 Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDescription: "Atalhos Adicionais:"
@@ -77,6 +81,7 @@ Name: "associatepdf"; Description: "Associar o Vellum como leitor padrão para a
 ; Binário principal e DLLs coletadas pelo windeployqt
 Source: "release_windows\Vellum.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "release_windows\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "Vellum.exe"
+Source: "download_models.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app_icon.ico"
@@ -97,6 +102,11 @@ Type: filesandordirs; Name: "{app}\backend"
 Type: filesandordirs; Name: "{app}"
 
 [Run]
+; Instalação condicional dos modelos Ollama selecionados pelo usuário (somente efetua pull se Ollama existir no PC)
+Filename: "{app}\download_models.bat"; Parameters: "/phi3"; Components: ia_phi3; StatusMsg: "Verificando Ollama e configurando modelo phi3:mini..."; Flags: runhidden
+Filename: "{app}\download_models.bat"; Parameters: "/llama32"; Components: ia_llama32; StatusMsg: "Verificando Ollama e configurando modelo llama3.2:3b..."; Flags: runhidden
+Filename: "{app}\download_models.bat"; Parameters: "/llama3"; Components: ia_llama3; StatusMsg: "Verificando Ollama e configurando modelo llama3:8b..."; Flags: runhidden
+
 ; Iniciar o aplicativo ao finalizar
 Filename: "{app}\{#MyAppExeName}"; Description: "Iniciar o Vellum agora"; Flags: nowait postinstall skipifsilent
 

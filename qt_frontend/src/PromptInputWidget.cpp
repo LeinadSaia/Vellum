@@ -40,7 +40,7 @@ void PromptInputWidget::setupUi() {
     // 2. Caixa de Texto
     m_textInput = new QTextEdit(this);
     m_textInput->setPlaceholderText("Digite seu comando aqui... (Shift+Enter para enviar)");
-    m_textInput->setFixedHeight(80);
+    m_textInput->setMinimumHeight(60);
     m_textInput->installEventFilter(this); // Para capturar Shift+Enter
 
     // 3. Barra de Ferramentas (Botões)
